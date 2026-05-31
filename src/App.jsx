@@ -38,9 +38,15 @@ function ShardCard({ shard }) {
         </div>
         <div className="stat">
           <span className="stat-label">Block rate</span>
-          <span className={`stat-value color-${rate >= 0.9 ? 'synced' : rate >= 0.5 ? 'close' : 'behind'}`}>
-            {rate.toFixed(2)}x
-          </span>
+          {status === 'synced' ? (
+            <span className="stat-value color-synced" style={{ fontSize: '15px' }}>Live</span>
+          ) : rate === 0 ? (
+            <span className="stat-value color-behind" style={{ fontSize: '13px' }}>Waiting for blocks…</span>
+          ) : (
+            <span className={`stat-value color-${rate >= 0.9 ? 'synced' : rate >= 0.5 ? 'close' : 'behind'}`}>
+              {rate.toFixed(2)}x
+            </span>
+          )}
         </div>
         <div className="stat">
           <span className="stat-label">Block height</span>
