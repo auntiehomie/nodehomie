@@ -65,6 +65,12 @@ export default function App() {
     if (!targetUrl) return
     setLoading(true)
     setError(null)
+    if (window.location.protocol === 'https:' && targetUrl.startsWith('http:')) {
+      setError('MIXED_CONTENT')
+      setData(null)
+      setLoading(false)
+      return
+    }
     try {
       const res = await fetch(`${targetUrl.replace(/\/$/, '')}/v1/info`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -115,7 +121,7 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <h1>NodeHomie</h1>
-        <p className="subtitle">Snapchain node monitor</p>
+        <p className="subtitle">Hypersnap node monitor</p>
       </header>
 
       {!url ? (
@@ -144,7 +150,13 @@ export default function App() {
 
           {error && (
             <div className="error-banner">
-              Could not reach node: {error}. Check URL and Tailscale.
+              {error === 'MIXED_CONTENT' ? (
+                <>
+                  <strong>HTTPS → HTTP blocked by browser.</strong> Your node is HTTP but this page is HTTPS. Fix: use the node's <code>https://</code> address, or open the app over HTTP instead (e.g. save it as a local file or self-host without TLS).
+                </>
+              ) : (
+                <>Could not reach node: {error}. Check URL and Tailscale.</>
+              )}
             </div>
           )}
 
