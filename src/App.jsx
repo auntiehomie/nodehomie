@@ -130,7 +130,7 @@ export default function App() {
           <input
             type="text"
             className="url-input"
-            placeholder="http://your-tailscale-ip:3381"
+            placeholder="https://your-node.ts.net:3381"
             value={inputUrl}
             onChange={e => setInputUrl(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && connect()}
