@@ -1,0 +1,133 @@
+.about-hero {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 12px;
+}
+
+.about-tagline {
+  font-size: 15px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.about-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.about-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.about-body {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.about-body code {
+  font-size: 12px;
+  background: rgba(255,255,255,0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--text);
+}
+
+.about-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 18px;
+}
+
+.about-list li {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.about-list li code {
+  font-size: 12px;
+  background: rgba(255,255,255,0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--text);
+}
+
+.about-list-ordered {
+  list-style-type: decimal;
+}
+
+.about-tip {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.about-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.about-ext-link {
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.about-ext-link:hover {
+  text-decoration: underline;
+}
+
+.about-credits-intro {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.credits-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.credit-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.credit-card:hover {
+  border-color: var(--accent);
+  background: rgba(167, 139, 250, 0.06);
+}
+
+.credit-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.credit-handle {
+  font-size: 11px;
+  color: var(--accent);
+}
