@@ -3,11 +3,11 @@ import './App.css'
 
 const STORAGE_KEY = 'nodehomie_url'
 
-function formatLag(seconds) {
-  if (seconds < 60) return `${seconds}s`
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`
-  if (seconds < 86400) return `${Math.round(seconds / 3600)}h`
-  return `${Math.round(seconds / 86400)}d`
+function formatRemaining(seconds) {
+  if (seconds < 60) return 'Synced'
+  if (seconds < 3600) return `~${Math.round(seconds / 60)}m remaining`
+  if (seconds < 86400) return `~${Math.round(seconds / 3600)}h remaining`
+  return `~${Math.round(seconds / 86400)}d remaining`
 }
 
 function lagStatus(seconds) {
@@ -32,9 +32,9 @@ function ShardCard({ shard }) {
         </span>
       </div>
       <div className="shard-stats">
-        <div className="stat">
-          <span className="stat-label">Lag</span>
-          <span className={`stat-value color-${status}`}>{formatLag(lag)}</span>
+        <div className="stat stat-full">
+          <span className="stat-label">History remaining</span>
+          <span className={`stat-value color-${status}`} style={{ fontSize: '15px' }}>{formatRemaining(lag)}</span>
         </div>
         <div className="stat">
           <span className="stat-label">Block rate</span>
@@ -42,7 +42,7 @@ function ShardCard({ shard }) {
             {rate.toFixed(2)}x
           </span>
         </div>
-        <div className="stat stat-full">
+        <div className="stat">
           <span className="stat-label">Block height</span>
           <span className="stat-value">{height.toLocaleString()}</span>
         </div>
@@ -65,6 +65,12 @@ export default function App() {
     if (!targetUrl) return
     setLoading(true)
     setError(null)
+    if (window.location.protocol === 'https:' && targetUrl.startsWith('http:')) {
+      setError('MIXED_CONTENT')
+      setData(null)
+      setLoading(false)
+      return
+    }
     try {
       const res = await fetch(`${targetUrl.replace(/\/$/, '')}/v1/info`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -115,7 +121,7 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <h1>NodeHomie</h1>
-        <p className="subtitle">Snapchain node monitor</p>
+        <p className="subtitle">Hypersnap node monitor</p>
       </header>
 
       {!url ? (
@@ -124,7 +130,7 @@ export default function App() {
           <input
             type="text"
             className="url-input"
-            placeholder="http://your-tailscale-ip:3381"
+            placeholder="https://your-node.ts.net:3381"
             value={inputUrl}
             onChange={e => setInputUrl(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && connect()}
@@ -144,7 +150,13 @@ export default function App() {
 
           {error && (
             <div className="error-banner">
-              Could not reach node: {error}. Check URL and Tailscale.
+              {error === 'MIXED_CONTENT' ? (
+                <>
+                  <strong>HTTPS → HTTP blocked by browser.</strong> Your node is HTTP but this page is HTTPS. Fix: use the node's <code>https://</code> address, or open the app over HTTP instead (e.g. save it as a local file or self-host without TLS).
+                </>
+              ) : (
+                <>Could not reach node: {error}. Check URL and Tailscale.</>
+              )}
             </div>
           )}
 
