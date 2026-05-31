@@ -3,11 +3,11 @@ import './App.css'
 
 const STORAGE_KEY = 'nodehomie_url'
 
-function formatLag(seconds) {
-  if (seconds < 60) return `${seconds}s`
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`
-  if (seconds < 86400) return `${Math.round(seconds / 3600)}h`
-  return `${Math.round(seconds / 86400)}d`
+function formatRemaining(seconds) {
+  if (seconds < 60) return 'Synced'
+  if (seconds < 3600) return `~${Math.round(seconds / 60)}m remaining`
+  if (seconds < 86400) return `~${Math.round(seconds / 3600)}h remaining`
+  return `~${Math.round(seconds / 86400)}d remaining`
 }
 
 function lagStatus(seconds) {
@@ -32,9 +32,9 @@ function ShardCard({ shard }) {
         </span>
       </div>
       <div className="shard-stats">
-        <div className="stat">
-          <span className="stat-label">Lag</span>
-          <span className={`stat-value color-${status}`}>{formatLag(lag)}</span>
+        <div className="stat stat-full">
+          <span className="stat-label">History remaining</span>
+          <span className={`stat-value color-${status}`} style={{ fontSize: '15px' }}>{formatRemaining(lag)}</span>
         </div>
         <div className="stat">
           <span className="stat-label">Block rate</span>
@@ -42,7 +42,7 @@ function ShardCard({ shard }) {
             {rate.toFixed(2)}x
           </span>
         </div>
-        <div className="stat stat-full">
+        <div className="stat">
           <span className="stat-label">Block height</span>
           <span className="stat-value">{height.toLocaleString()}</span>
         </div>
