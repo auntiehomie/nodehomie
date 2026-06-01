@@ -61,6 +61,7 @@ export default function App() {
   const [url, setUrl] = useState(() => localStorage.getItem(STORAGE_KEY) || '')
   const [inputUrl, setInputUrl] = useState(() => localStorage.getItem(STORAGE_KEY) || '')
   const [data, setData] = useState(null)
+  const [peers, setPeers] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
@@ -78,11 +79,21 @@ export default function App() {
       return
     }
     try {
-      const res = await fetch(`${targetUrl.replace(/\/$/, '')}/v1/info`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
+      const base = targetUrl.replace(/\/$/, '')
+      const [infoRes, peersRes] = await Promise.allSettled([
+        fetch(`${base}/v1/info`),
+        fetch(`${base}/v1/peers`),
+      ])
+      if (infoRes.status === 'rejected' || !infoRes.value.ok)
+        throw new Error(infoRes.reason?.message ?? `HTTP ${infoRes.value?.status}`)
+      const json = await infoRes.value.json()
       setData(json)
       setLastUpdated(new Date())
+      if (peersRes.status === 'fulfilled' && peersRes.value.ok) {
+        const p = await peersRes.value.json()
+        const count = Array.isArray(p) ? p.length : Array.isArray(p?.peers) ? p.peers.length : null
+        setPeers(count)
+      }
     } catch (e) {
       setError(e.message)
       setData(null)
@@ -115,12 +126,13 @@ export default function App() {
     setUrl('')
     setInputUrl('')
     setData(null)
+    setPeers(null)
     setError(null)
     clearInterval(timerRef.current)
   }
 
   const shards = data?.shardInfos ?? data?.shard_infos ?? []
-  const peers = data?.numPeers ?? data?.num_peers ?? '—'
+  const peerDisplay = peers ?? data?.numPeers ?? data?.num_peers ?? '—'
   const version = data?.version ? `v${data.version}` : null
 
   return (
@@ -171,7 +183,7 @@ export default function App() {
               <div className="top-stats">
                 <div className="top-stat">
                   <span className="stat-label">Peers</span>
-                  <span className="stat-value">{peers}</span>
+                  <span className="stat-value">{peerDisplay}</span>
                 </div>
                 <div className="top-stat">
                   <span className="stat-label">Auto-refresh</span>
