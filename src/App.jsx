@@ -16,7 +16,14 @@ function lagStatus(seconds) {
   return 'behind'
 }
 
-function ShardCard({ shard }) {
+function formatSpeed(bps) {
+  if (bps === undefined || bps === null) return '—'
+  if (bps < 1) return '<1 blk/s'
+  if (bps < 1000) return `~${Math.round(bps)} blk/s`
+  return `~${(bps / 1000).toFixed(1)}k blk/s`
+}
+
+function ShardCard({ shard, speed }) {
   const lag = shard.blockDelay ?? shard.block_delay ?? 0
   const height = shard.maxHeight ?? shard.max_height ?? 0
   const rate = parseFloat(shard.blockRate ?? shard.block_rate ?? 0)
@@ -37,14 +44,16 @@ function ShardCard({ shard }) {
           <span className={`stat-value color-${status}`} style={{ fontSize: '15px' }}>{formatRemaining(lag)}</span>
         </div>
         <div className="stat">
-          <span className="stat-label">Block rate</span>
+          <span className="stat-label">Sync speed</span>
           {status === 'synced' ? (
             <span className="stat-value color-synced" style={{ fontSize: '15px' }}>Live</span>
-          ) : rate === 0 ? (
+          ) : speed === undefined ? (
+            <span className="stat-value" style={{ fontSize: '13px', color: 'var(--text-dim)' }}>Measuring…</span>
+          ) : speed < 1 ? (
             <span className="stat-value color-behind" style={{ fontSize: '13px' }}>Waiting for blocks…</span>
           ) : (
-            <span className={`stat-value color-${rate >= 0.9 ? 'synced' : rate >= 0.5 ? 'close' : 'behind'}`}>
-              {rate.toFixed(2)}x
+            <span className={`stat-value color-${speed >= 500 ? 'synced' : speed >= 50 ? 'close' : 'behind'}`} style={{ fontSize: '15px' }}>
+              {formatSpeed(speed)}
             </span>
           )}
         </div>
@@ -66,7 +75,9 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [refreshInterval, setRefreshInterval] = useState(30)
+  const [speeds, setSpeeds] = useState({})
   const timerRef = useRef(null)
+  const prevShardRef = useRef({})
 
   const fetchData = useCallback(async (targetUrl) => {
     if (!targetUrl) return
@@ -89,6 +100,22 @@ export default function App() {
       const json = await infoRes.value.json()
       setData(json)
       setLastUpdated(new Date())
+      const now = Date.now()
+      const newSpeeds = {}
+      const newPrev = {}
+      const shardList = json.shardInfos ?? json.shard_infos ?? []
+      shardList.forEach(s => {
+        const id = s.shardId ?? s.shard_id
+        const h = s.maxHeight ?? s.max_height ?? 0
+        const prev = prevShardRef.current[id]
+        if (prev) {
+          const elapsed = (now - prev.time) / 1000
+          newSpeeds[id] = elapsed > 0 ? Math.max(0, (h - prev.height) / elapsed) : 0
+        }
+        newPrev[id] = { height: h, time: now }
+      })
+      prevShardRef.current = newPrev
+      setSpeeds(newSpeeds)
       if (peersRes.status === 'fulfilled' && peersRes.value.ok) {
         const p = await peersRes.value.json()
         const count = Array.isArray(p) ? p.length : Array.isArray(p?.peers) ? p.peers.length : null
@@ -127,6 +154,8 @@ export default function App() {
     setInputUrl('')
     setData(null)
     setPeers(null)
+    setSpeeds({})
+    prevShardRef.current = {}
     setError(null)
     clearInterval(timerRef.current)
   }
@@ -203,7 +232,7 @@ export default function App() {
 
               <div className="shards-list">
                 {shards.map(s => (
-                  <ShardCard key={s.shardId ?? s.shard_id} shard={s} />
+                  <ShardCard key={s.shardId ?? s.shard_id} shard={s} speed={speeds[s.shardId ?? s.shard_id]} />
                 ))}
               </div>
 
