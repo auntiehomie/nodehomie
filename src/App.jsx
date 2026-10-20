@@ -276,7 +276,7 @@ export default function App() {
                 ) : peerList.length > 0 ? (
                   <ul className="peer-list">
                     {peerList.map((peer, index) => (
-                      <li className="peer-row" key={peerId(peer) || index}>
+                      <li className="peer-row" key={`${peerId(peer)}-${index}`}>
                         <span className="peer-id" title={peerId(peer)}>{peerId(peer)}</span>
                         <span className="peer-meta">
                           {peer.source && <span className="peer-source">{peer.source}</span>}
@@ -285,7 +285,9 @@ export default function App() {
                       </li>
                     ))}
                   </ul>
-                ) : peerError ? null : (
+                ) : peers > 0 ? (
+                  <p className="peer-empty">The node reports {peers} connected peers, but did not include peer details.</p>
+                ) : (
                   <p className="peer-empty">No connected peers are currently reported by the node.</p>
                 )}
               </section>
