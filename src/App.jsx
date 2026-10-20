@@ -66,11 +66,31 @@ function ShardCard({ shard, speed }) {
   )
 }
 
+function normalizePeerResponse(payload) {
+  if (Array.isArray(payload)) return { peers: payload, count: payload.length }
+  if (Array.isArray(payload?.peers)) return { peers: payload.peers, count: payload.peers.length }
+  if (Array.isArray(payload?.currentPeers)) return { peers: payload.currentPeers, count: payload.currentPeers.length }
+  if (Number.isFinite(payload?.numPeers)) return { peers: [], count: payload.numPeers }
+  if (Number.isFinite(payload?.num_peers)) return { peers: [], count: payload.num_peers }
+  return null
+}
+
+function peerId(peer) {
+  return peer.peer_id ?? peer.peerId ?? peer.id ?? 'Unknown peer'
+}
+
+function peerAddress(peer) {
+  return peer.observed_address ?? peer.observedAddress ?? peer.contact_info?.gossip_address ??
+    peer.contactInfo?.gossipAddress ?? ''
+}
+
 export default function App() {
   const [url, setUrl] = useState(() => localStorage.getItem(STORAGE_KEY) || '')
   const [inputUrl, setInputUrl] = useState(() => localStorage.getItem(STORAGE_KEY) || '')
   const [data, setData] = useState(null)
   const [peers, setPeers] = useState(null)
+  const [peerList, setPeerList] = useState([])
+  const [peerError, setPeerError] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
@@ -93,7 +113,7 @@ export default function App() {
       const base = targetUrl.replace(/\/$/, '')
       const [infoRes, peersRes] = await Promise.allSettled([
         fetch(`${base}/v1/info`),
-        fetch(`${base}/v1/peers`),
+        fetch(`${base}/v1/currentPeers`),
       ])
       if (infoRes.status === 'rejected' || !infoRes.value.ok)
         throw new Error(infoRes.reason?.message ?? `HTTP ${infoRes.value?.status}`)
@@ -116,10 +136,21 @@ export default function App() {
       })
       prevShardRef.current = newPrev
       setSpeeds(newSpeeds)
-      if (peersRes.status === 'fulfilled' && peersRes.value.ok) {
-        const p = await peersRes.value.json()
-        const count = Array.isArray(p) ? p.length : Array.isArray(p?.peers) ? p.peers.length : null
-        setPeers(count)
+      try {
+        if (peersRes.status === 'rejected') throw peersRes.reason
+        let response = peersRes.value
+        // Older node builds may expose only the legacy route.
+        if (response.status === 404) response = await fetch(`${base}/v1/peers`)
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const normalized = normalizePeerResponse(await response.json())
+        if (!normalized) throw new Error('Unexpected response from peer endpoint')
+        setPeers(normalized.count)
+        setPeerList(normalized.peers)
+        setPeerError(null)
+      } catch (peerFetchError) {
+        setPeers(null)
+        setPeerList([])
+        setPeerError(peerFetchError?.message || 'Peer endpoint unavailable')
       }
     } catch (e) {
       setError(e.message)
@@ -154,6 +185,8 @@ export default function App() {
     setInputUrl('')
     setData(null)
     setPeers(null)
+    setPeerList([])
+    setPeerError(null)
     setSpeeds({})
     prevShardRef.current = {}
     setError(null)
@@ -161,7 +194,8 @@ export default function App() {
   }
 
   const shards = data?.shardInfos ?? data?.shard_infos ?? []
-  const peerDisplay = peers ?? data?.numPeers ?? data?.num_peers ?? '—'
+  const infoPeerCount = data?.numPeers ?? data?.num_peers
+  const peerDisplay = peers ?? infoPeerCount ?? '—'
   const version = data?.version ? `v${data.version}` : null
 
   return (
@@ -229,6 +263,32 @@ export default function App() {
                   </select>
                 </div>
               </div>
+
+              <section className="peers-panel" aria-labelledby="connected-peers-title">
+                <div className="peers-panel-header">
+                  <h2 id="connected-peers-title">Connected peers</h2>
+                  <span className={peerError ? 'peer-count peer-count-error' : 'peer-count'}>
+                    {peers === null ? 'Unavailable' : `${peers} connected`}
+                  </span>
+                </div>
+                {peerError ? (
+                  <p className="peer-empty">Could not load peer connections ({peerError}). The node is reachable, but its peer endpoint did not return usable data.</p>
+                ) : peerList.length > 0 ? (
+                  <ul className="peer-list">
+                    {peerList.map((peer, index) => (
+                      <li className="peer-row" key={peerId(peer) || index}>
+                        <span className="peer-id" title={peerId(peer)}>{peerId(peer)}</span>
+                        <span className="peer-meta">
+                          {peer.source && <span className="peer-source">{peer.source}</span>}
+                          {peerAddress(peer) && <span className="peer-address" title={peerAddress(peer)}>{peerAddress(peer)}</span>}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : peerError ? null : (
+                  <p className="peer-empty">No connected peers are currently reported by the node.</p>
+                )}
+              </section>
 
               <div className="shards-list">
                 {shards.map(s => (
