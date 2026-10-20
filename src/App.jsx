@@ -195,7 +195,7 @@ export default function App() {
 
   const shards = data?.shardInfos ?? data?.shard_infos ?? []
   const infoPeerCount = data?.numPeers ?? data?.num_peers
-  const peerDisplay = peers ?? infoPeerCount ?? '—'
+  const peerDisplay = peers ?? infoPeerCount ?? (peerError ? 'Unavailable' : '—')
   const version = data?.version ? `v${data.version}` : null
 
   return (
