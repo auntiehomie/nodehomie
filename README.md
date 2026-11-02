@@ -4,7 +4,8 @@ A mobile-friendly Snapchain node monitor. Enter your node URL (e.g. your Tailsca
 
 ## Features
 
-- Shard-by-shard lag, block rate, and height
+- Shard 1 and 2 health, block delay, progress rate, and height
+- Optional localhost host monitor for container state, CPU, memory, and disk space
 - Color coded sync status (green/amber/red)
 - Auto-refresh (15s, 30s, 1m, 5m)
 - Remembers your node URL between sessions
@@ -26,6 +27,8 @@ Or connect your GitHub repo to Vercel for automatic deploys on push.
 npm install
 npm run dev
 ```
+
+Run the unit tests with `npm test`. The optional read-only host monitor and installation steps are in the Setup Guide.
 
 ## Usage
 

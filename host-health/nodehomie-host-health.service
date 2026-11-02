@@ -1,0 +1,21 @@
+[Unit]
+Description=NodeHomie read-only host health endpoint
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/nodehomie-host-health
+ExecStart=/usr/bin/python3 /opt/nodehomie-host-health/server.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
