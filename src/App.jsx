@@ -109,6 +109,7 @@ export default function App() {
   const [hostHealth, setHostHealth] = useState(null)
   const timerRef = useRef(null)
   const prevShardRef = useRef({})
+  const trendsRef = useRef({})
 
   const fetchData = useCallback(async (targetUrl) => {
     if (!targetUrl) return
@@ -134,7 +135,7 @@ export default function App() {
       const now = Date.now()
       const newSpeeds = {}
       const newPrev = {}
-      const newTrends = { ...trends }
+      const newTrends = { ...trendsRef.current }
       const shardList = json.shardInfos ?? json.shard_infos ?? []
       shardList.forEach(s => {
         const id = shardId(s)
@@ -145,13 +146,14 @@ export default function App() {
           const elapsed = (now - prev.time) / 1000
           newSpeeds[id] = elapsed > 0 ? Math.max(0, (h - prev.height) / elapsed) : undefined
           const improved = h > prev.height || (lag !== null && prev.lag !== null && lag < prev.lag)
-          const prior = trends[id]
+          const prior = trendsRef.current[id]
           const lastProgress = improved ? now : (prior?.lastProgress ?? now)
           newTrends[id] = { advancing: improved, lastProgress, stalled: lag > 60 && now - lastProgress >= 5 * 60 * 1000 }
         }
         newPrev[id] = { height: h, lag, time: now }
       })
       prevShardRef.current = newPrev
+      trendsRef.current = newTrends
       setSpeeds(newSpeeds)
       setTrends(newTrends)
       try {
@@ -183,7 +185,7 @@ export default function App() {
     } finally {
       setLoading(false)
     }
-  }, [trends])
+  }, [])
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current)
@@ -214,6 +216,7 @@ export default function App() {
     setPeerError(null)
     setSpeeds({})
     setTrends({})
+    trendsRef.current = {}
     setHostHealth(null)
     prevShardRef.current = {}
     setError(null)
