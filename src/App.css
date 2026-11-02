@@ -154,6 +154,29 @@
   margin-bottom: 12px;
 }
 
+.health-summary, .host-health {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.health-summary { display: flex; flex-direction: column; gap: 4px; }
+.health-summary strong { color: var(--green); font-size: 15px; }
+.health-summary span, .health-note { color: var(--text-muted); font-size: 12px; }
+.host-health h2 { font-size: 14px; font-weight: 500; }
+.host-health-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.host-health-heading > span { color: var(--green); font-size: 12px; }
+.host-warning .host-health-heading > span { color: var(--red); }
+.host-metrics { display: flex; flex-wrap: wrap; gap: 6px 12px; color: var(--text); font-size: 12px; }
+.host-health p { margin-top: 8px; }
+.shard-card.shard-syncing { border-left: 3px solid var(--amber); }
+.shard-card.shard-stalled, .shard-card.shard-missing { border-left: 3px solid var(--red); }
+.badge-syncing { background: rgba(251, 191, 36, 0.12); color: var(--amber); }
+.badge-stalled, .badge-unknown, .badge-missing { background: rgba(248, 113, 113, 0.12); color: var(--red); }
+.color-syncing { color: var(--amber); }
+.color-stalled, .color-unknown, .color-missing { color: var(--red); }
+
 .top-stat {
   background: var(--bg-card);
   border: 1px solid var(--border);

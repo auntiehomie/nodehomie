@@ -1,20 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { EXPECTED_SHARDS, classifyShard, shardHeight, shardId, shardLag, summarizeShards } from './health.js'
 import './App.css'
 
 const STORAGE_KEY = 'nodehomie_url'
-
-function formatRemaining(seconds) {
-  if (seconds < 60) return 'Synced'
-  if (seconds < 3600) return `~${Math.round(seconds / 60)}m remaining`
-  if (seconds < 86400) return `~${Math.round(seconds / 3600)}h remaining`
-  return `~${Math.round(seconds / 86400)}d remaining`
-}
-
-function lagStatus(seconds) {
-  if (seconds < 60) return 'synced'
-  if (seconds < 3600) return 'close'
-  return 'behind'
-}
 
 function formatSpeed(bps) {
   if (bps === undefined || bps === null) return '—'
@@ -23,25 +11,24 @@ function formatSpeed(bps) {
   return `~${(bps / 1000).toFixed(1)}k blk/s`
 }
 
-function ShardCard({ shard, speed }) {
-  const lag = shard.blockDelay ?? shard.block_delay ?? 0
-  const height = shard.maxHeight ?? shard.max_height ?? 0
-  const rate = parseFloat(shard.blockRate ?? shard.block_rate ?? 0)
-  const shardId = shard.shardId ?? shard.shard_id ?? '?'
-  const status = lagStatus(lag)
+function ShardCard({ shard, speed, trend }) {
+  const lag = shardLag(shard)
+  const height = shardHeight(shard)
+  const id = shardId(shard)
+  const { status, label } = classifyShard(shard, trend)
 
   return (
     <div className={`shard-card shard-${status}`}>
       <div className="shard-header">
-        <span className="shard-title">Shard {shardId}</span>
+        <span className="shard-title">Shard {id}</span>
         <span className={`badge badge-${status}`}>
-          {status === 'synced' ? '● synced' : status === 'close' ? '◐ almost' : '○ catching up'}
+          {status === 'synced' ? '● synced' : status === 'stalled' ? '○ stalled' : status === 'unknown' ? '○ unknown' : `◐ ${label}`}
         </span>
       </div>
       <div className="shard-stats">
         <div className="stat stat-full">
-          <span className="stat-label">History remaining</span>
-          <span className={`stat-value color-${status}`} style={{ fontSize: '15px' }}>{formatRemaining(lag)}</span>
+          <span className="stat-label">Blocks behind network tip</span>
+          <span className={`stat-value color-${status}`} style={{ fontSize: '15px' }}>{lag === null ? 'Unavailable' : lag.toLocaleString()}</span>
         </div>
         <div className="stat">
           <span className="stat-label">Sync speed</span>
@@ -50,7 +37,7 @@ function ShardCard({ shard, speed }) {
           ) : speed === undefined ? (
             <span className="stat-value" style={{ fontSize: '13px', color: 'var(--text-dim)' }}>Measuring…</span>
           ) : speed < 1 ? (
-            <span className="stat-value color-behind" style={{ fontSize: '13px' }}>Waiting for blocks…</span>
+            <span className="stat-value" style={{ fontSize: '13px', color: 'var(--text-dim)' }}>No height change this sample</span>
           ) : (
             <span className={`stat-value color-${speed >= 500 ? 'synced' : speed >= 50 ? 'close' : 'behind'}`} style={{ fontSize: '15px' }}>
               {formatSpeed(speed)}
@@ -59,7 +46,7 @@ function ShardCard({ shard, speed }) {
         </div>
         <div className="stat">
           <span className="stat-label">Block height</span>
-          <span className="stat-value">{height.toLocaleString()}</span>
+          <span className="stat-value">{height === null ? 'Unavailable' : height.toLocaleString()}</span>
         </div>
       </div>
     </div>
@@ -84,6 +71,28 @@ function peerAddress(peer) {
     peer.contactInfo?.gossipAddress ?? ''
 }
 
+function HostHealth({ health }) {
+  if (!health) return (
+    <section className="host-health host-unavailable">
+      <div><h2>Machine health</h2><span className="health-note">Optional host monitor not connected</span></div>
+      <p>Node and shard health are available above. Follow Setup Guide → Monitoring to add disk and container metrics.</p>
+    </section>
+  )
+  const disk = (health.disks || []).map(item => `${item.name}: ${item.used_percent}% used, ${Math.floor(item.free_bytes / 1024 ** 3)} GiB free`).join(' · ')
+  return (
+    <section className={`host-health ${health.container?.running ? 'host-ok' : 'host-warning'}`}>
+      <div className="host-health-heading"><h2>Machine health</h2><span>{health.container?.running ? 'Container running' : 'Container stopped'}</span></div>
+      <div className="host-metrics">
+        <span>CPU {health.container?.cpu_percent ?? '—'}%</span>
+        <span>Memory {health.container?.memory_usage ?? '—'} / {health.container?.memory_limit ?? '—'}</span>
+        <span>{disk || 'Disk data unavailable'}</span>
+        <span>Restarts {health.container?.restart_count ?? '—'}</span>
+      </div>
+      {health.warnings?.length > 0 && <p className="health-note">{health.warnings.join(' · ')}</p>}
+    </section>
+  )
+}
+
 export default function App() {
   const [url, setUrl] = useState(() => localStorage.getItem(STORAGE_KEY) || '')
   const [inputUrl, setInputUrl] = useState(() => localStorage.getItem(STORAGE_KEY) || '')
@@ -96,8 +105,11 @@ export default function App() {
   const [lastUpdated, setLastUpdated] = useState(null)
   const [refreshInterval, setRefreshInterval] = useState(30)
   const [speeds, setSpeeds] = useState({})
+  const [trends, setTrends] = useState({})
+  const [hostHealth, setHostHealth] = useState(null)
   const timerRef = useRef(null)
   const prevShardRef = useRef({})
+  const trendsRef = useRef({})
 
   const fetchData = useCallback(async (targetUrl) => {
     if (!targetUrl) return
@@ -123,19 +135,34 @@ export default function App() {
       const now = Date.now()
       const newSpeeds = {}
       const newPrev = {}
+      const newTrends = { ...trendsRef.current }
       const shardList = json.shardInfos ?? json.shard_infos ?? []
       shardList.forEach(s => {
-        const id = s.shardId ?? s.shard_id
-        const h = s.maxHeight ?? s.max_height ?? 0
+        const id = shardId(s)
+        const h = shardHeight(s)
+        const lag = shardLag(s)
         const prev = prevShardRef.current[id]
-        if (prev) {
+        if (prev && h !== null && prev.height !== null) {
           const elapsed = (now - prev.time) / 1000
-          newSpeeds[id] = elapsed > 0 ? Math.max(0, (h - prev.height) / elapsed) : 0
+          newSpeeds[id] = elapsed > 0 ? Math.max(0, (h - prev.height) / elapsed) : undefined
+          const improved = h > prev.height || (lag !== null && prev.lag !== null && lag < prev.lag)
+          const prior = trendsRef.current[id]
+          const lastProgress = improved ? now : (prior?.lastProgress ?? now)
+          newTrends[id] = { advancing: improved, lastProgress, stalled: lag > 60 && now - lastProgress >= 5 * 60 * 1000 }
         }
-        newPrev[id] = { height: h, time: now }
+        newPrev[id] = { height: h, lag, time: now }
       })
       prevShardRef.current = newPrev
+      trendsRef.current = newTrends
       setSpeeds(newSpeeds)
+      setTrends(newTrends)
+      try {
+        const healthResponse = await fetch(`${base}/node-healthz`, { signal: AbortSignal.timeout(4000) })
+        if (!healthResponse.ok) throw new Error(`HTTP ${healthResponse.status}`)
+        setHostHealth(await healthResponse.json())
+      } catch {
+        setHostHealth(null)
+      }
       try {
         if (peersRes.status === 'rejected') throw peersRes.reason
         let response = peersRes.value
@@ -188,12 +215,17 @@ export default function App() {
     setPeerList([])
     setPeerError(null)
     setSpeeds({})
+    setTrends({})
+    trendsRef.current = {}
+    setHostHealth(null)
     prevShardRef.current = {}
     setError(null)
     clearInterval(timerRef.current)
   }
 
   const shards = data?.shardInfos ?? data?.shard_infos ?? []
+  const visibleShards = shards.filter(s => EXPECTED_SHARDS.includes(shardId(s)))
+  const shardSummary = summarizeShards(shards, trends)
   const infoPeerCount = data?.numPeers ?? data?.num_peers
   const peerDisplay = peers ?? infoPeerCount ?? (peerError ? 'Unavailable' : '—')
   const version = data?.version ? `v${data.version}` : null
@@ -243,6 +275,11 @@ export default function App() {
 
           {data && (
             <>
+              <section className="health-summary" aria-label="Node health summary">
+                <strong>{shardSummary.some(s => s.status === 'stalled' || s.status === 'missing') ? 'Needs attention' : shardSummary.every(s => s.status === 'synced') ? 'Healthy' : shardSummary.some(s => s.status === 'unknown') ? 'Telemetry incomplete' : 'Synchronizing'}</strong>
+                <span>Shards 1 and 2: {shardSummary.map(s => `#${s.id} ${s.label}`).join(' · ')}</span>
+              </section>
+              <HostHealth health={hostHealth} />
               <div className="top-stats">
                 <div className="top-stat">
                   <span className="stat-label">Peers</span>
@@ -293,9 +330,10 @@ export default function App() {
               </section>
 
               <div className="shards-list">
-                {shards.map(s => (
-                  <ShardCard key={s.shardId ?? s.shard_id} shard={s} speed={speeds[s.shardId ?? s.shard_id]} />
+                {visibleShards.map(s => (
+                  <ShardCard key={shardId(s)} shard={s} speed={speeds[shardId(s)]} trend={trends[shardId(s)]} />
                 ))}
+                {visibleShards.length === 0 && <p className="peer-empty">The node did not report shard 1 or 2.</p>}
               </div>
 
               <div className="footer-row">

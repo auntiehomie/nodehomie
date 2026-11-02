@@ -260,8 +260,27 @@ sudo tailscale up`}</CodeBlock>
           <CodeBlock>{`curl http://localhost:3381/v1/info | jq .`}</CodeBlock>
           <p className="glabel">Check block delay per shard:</p>
           <CodeBlock>{`curl -s http://localhost:3381/v1/info | jq '.shardInfos[] | {shardId, blockDelay, maxHeight}'`}</CodeBlock>
+          <p className="gp">NodeHomie shows block delay as blocks behind the network tip. It does not turn that count into a time estimate. It watches height and delay across refreshes, and only flags a shard as stalled after five minutes without progress. Shard 0 is omitted because the node uses shards 1 and 2.</p>
           <p className="glabel">Watch disk usage:</p>
           <CodeBlock>{`watch -n 30 'df -h /mnt/ssd /mnt/ssd2 && du -sh /mnt/ssd2/.rocks/shard-*/'`}</CodeBlock>
+          <p className="glabel">Optional: show container and disk health in NodeHomie</p>
+          <p className="gp">This read-only helper runs on the node machine, binds only to localhost, and reads Docker and disk usage. Replace <code>homie</code>, the two data paths, and the Vercel origin with your own values. It does not expose the Docker socket to the web app.</p>
+          <CodeBlock>{`git clone https://github.com/auntiehomie/nodehomie.git ~/nodehomie
+sudo install -d -m 755 /opt/nodehomie-host-health
+sudo install -m 644 ~/nodehomie/host-health/server.py /opt/nodehomie-host-health/server.py
+sudo install -m 644 ~/nodehomie/host-health/nodehomie-host-health.service /etc/systemd/system/
+sudo tee /etc/default/nodehomie-host-health >/dev/null <<'EOF'
+NODEHOMIE_CONTAINER=hypersnap-hypersnap-1
+NODEHOMIE_DB_PATH=/home/homie/hypersnap/.rocks
+NODEHOMIE_STAGING_PATH=/mnt/hypersnap-staging
+NODEHOMIE_ALLOWED_ORIGIN=https://your-nodehomie.vercel.app
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now nodehomie-host-health
+curl -s http://127.0.0.1:3390/ | jq .`}</CodeBlock>
+          <p className="gp">Set <code>User=homie</code> and <code>Group=docker</code> under <code>[Service]</code> in the unit file before enabling it (replace <code>homie</code> with your Ubuntu username). Add the monitor to the node's existing Tailscale Serve configuration:</p>
+          <CodeBlock>{`sudo tailscale serve --bg --set-path=/node-healthz http://127.0.0.1:3390`}</CodeBlock>
+          <p className="gp">After deploying the updated NodeHomie, enter your existing Tailscale HTTPS node address. The monitor will show container state, CPU, memory, and free disk when the helper is reachable. Never enable Tailscale Funnel for this endpoint.</p>
           <p className="gp">Grafana dashboard is available at <code>http://your-tailscale-ip:3000</code></p>
           <p className="glabel">Key metrics:</p>
           <ul className="glist">
