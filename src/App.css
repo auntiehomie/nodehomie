@@ -177,6 +177,71 @@
 .color-syncing { color: var(--amber); }
 .color-stalled, .color-unknown, .color-missing { color: var(--red); }
 
+.message-activity {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.message-activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.message-activity-header h2 {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.message-mode {
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.message-mode-live {
+  background: rgba(74, 222, 128, 0.12);
+  color: var(--green);
+}
+
+.message-mode-catchup {
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--amber);
+}
+
+.message-activity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.message-stat {
+  background: var(--bg-input);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.message-stat .stat-value {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.message-activity-note {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: 9px;
+}
+
 .top-stat {
   background: var(--bg-card);
   border: 1px solid var(--border);

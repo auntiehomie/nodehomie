@@ -1,5 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { EXPECTED_SHARDS, classifyShard, shardHeight, shardId, shardLag, summarizeShards } from './health.js'
+import {
+  EXPECTED_SHARDS,
+  classifyShard,
+  nodeMessageCount,
+  sampleMessageActivity,
+  shardHeight,
+  shardId,
+  shardLag,
+  summarizeShards,
+} from './health.js'
 import './App.css'
 
 const STORAGE_KEY = 'nodehomie_url'
@@ -9,6 +18,14 @@ function formatSpeed(bps) {
   if (bps < 1) return '<1 blk/s'
   if (bps < 1000) return `~${Math.round(bps)} blk/s`
   return `~${(bps / 1000).toFixed(1)}k blk/s`
+}
+
+function formatMessageRate(perSecond) {
+  if (perSecond === undefined || perSecond === null) return 'Measuring…'
+  if (perSecond === 0) return '0 msg/s'
+  if (perSecond < 0.1) return '<0.1 msg/s'
+  if (perSecond < 100) return `${perSecond.toFixed(1)} msg/s`
+  return `${Math.round(perSecond).toLocaleString()} msg/s`
 }
 
 function ShardCard({ shard, speed, trend }) {
@@ -107,8 +124,10 @@ export default function App() {
   const [speeds, setSpeeds] = useState({})
   const [trends, setTrends] = useState({})
   const [hostHealth, setHostHealth] = useState(null)
+  const [messageActivity, setMessageActivity] = useState(null)
   const timerRef = useRef(null)
   const prevShardRef = useRef({})
+  const prevMessageRef = useRef(null)
   const trendsRef = useRef({})
 
   const fetchData = useCallback(async (targetUrl) => {
@@ -133,6 +152,17 @@ export default function App() {
       setData(json)
       setLastUpdated(new Date())
       const now = Date.now()
+      const totalMessages = nodeMessageCount(json)
+      if (totalMessages === null) {
+        prevMessageRef.current = null
+        setMessageActivity(null)
+      } else {
+        const activity = sampleMessageActivity(prevMessageRef.current, totalMessages, now)
+        prevMessageRef.current = activity
+          ? { total: activity.total, sampledAt: activity.sampledAt }
+          : null
+        setMessageActivity(activity)
+      }
       const newSpeeds = {}
       const newPrev = {}
       const newTrends = { ...trendsRef.current }
@@ -218,7 +248,9 @@ export default function App() {
     setTrends({})
     trendsRef.current = {}
     setHostHealth(null)
+    setMessageActivity(null)
     prevShardRef.current = {}
+    prevMessageRef.current = null
     setError(null)
     clearInterval(timerRef.current)
   }
@@ -229,6 +261,7 @@ export default function App() {
   const infoPeerCount = data?.numPeers ?? data?.num_peers
   const peerDisplay = peers ?? infoPeerCount ?? (peerError ? 'Unavailable' : '—')
   const version = data?.version ? `v${data.version}` : null
+  const shardsSynced = shardSummary.every(s => s.status === 'synced')
 
   return (
     <div className="app">
@@ -300,6 +333,38 @@ export default function App() {
                   </select>
                 </div>
               </div>
+
+              {messageActivity && (
+                <section className="message-activity" aria-labelledby="message-activity-title">
+                  <div className="message-activity-header">
+                    <h2 id="message-activity-title">Message activity</h2>
+                    <span className={shardsSynced ? 'message-mode message-mode-live' : 'message-mode message-mode-catchup'}>
+                      {shardsSynced ? '● live' : '◐ includes catch-up'}
+                    </span>
+                  </div>
+                  <div className="message-activity-grid">
+                    <div className="message-stat">
+                      <span className="stat-label">Total indexed</span>
+                      <span className="stat-value">{messageActivity.total.toLocaleString()}</span>
+                    </div>
+                    <div className="message-stat">
+                      <span className="stat-label">Since last refresh</span>
+                      <span className="stat-value">
+                        {messageActivity.delta === null ? 'Measuring…' : `+${messageActivity.delta.toLocaleString()}`}
+                      </span>
+                    </div>
+                    <div className="message-stat">
+                      <span className="stat-label">{shardsSynced ? 'Message rate' : 'Indexing rate'}</span>
+                      <span className="stat-value">{formatMessageRate(messageActivity.perSecond)}</span>
+                    </div>
+                  </div>
+                  <p className="message-activity-note">
+                    {shardsSynced
+                      ? 'Messages indexed by this node since the previous sample.'
+                      : 'This rate includes historical indexing until both shards are synced.'}
+                  </p>
+                </section>
+              )}
 
               <section className="peers-panel" aria-labelledby="connected-peers-title">
                 <div className="peers-panel-header">
