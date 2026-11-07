@@ -170,6 +170,30 @@
 .host-warning .host-health-heading > span { color: var(--red); }
 .host-metrics { display: flex; flex-wrap: wrap; gap: 6px 12px; color: var(--text); font-size: 12px; }
 .host-health p { margin-top: 8px; }
+.operator-card, .engine-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.operator-warning { border-color: rgba(251, 191, 36, 0.45); }
+.operator-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.operator-card-header h2 { font-size: 15px; font-weight: 500; }
+.operator-card-header > span { color: var(--text-muted); font-size: 11px; }
+.operator-warning .operator-card-header > span { color: var(--amber); }
+.operator-grid, .engine-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.operator-grid > div, .engine-grid > div { background: var(--bg-input); border-radius: 9px; padding: 9px 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.operator-grid strong, .engine-grid strong { font-size: 14px; overflow-wrap: anywhere; }
+.operator-primary { display: block; color: var(--amber); font-size: 15px; margin-bottom: 5px; }
+.operator-note { color: var(--text-muted); font-size: 11px; line-height: 1.45; margin-top: 9px; }
+.engine-panel summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; list-style: none; }
+.engine-panel summary::-webkit-details-marker { display: none; }
+.engine-panel summary > span:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.engine-panel summary strong { font-size: 15px; font-weight: 500; }
+.engine-panel summary small { color: var(--text-muted); font-size: 11px; }
+.engine-panel[open] summary { margin-bottom: 10px; }
+.engine-grid { grid-template-columns: repeat(3, 1fr); }
 .shard-card.shard-syncing { border-left: 3px solid var(--amber); }
 .shard-card.shard-stalled, .shard-card.shard-missing { border-left: 3px solid var(--red); }
 .badge-syncing { background: rgba(251, 191, 36, 0.12); color: var(--amber); }
@@ -441,6 +465,21 @@
   gap: 8px;
 }
 
+.peer-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 9px;
+}
+
+.peer-summary span, .peer-version {
+  background: rgba(255,255,255,0.05);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 3px 7px;
+}
+
 .peer-row {
   min-width: 0;
   display: flex;
@@ -474,6 +513,8 @@
   text-transform: capitalize;
 }
 
+.peer-version { flex-shrink: 0; }
+
 .peer-address {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -484,4 +525,8 @@
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.5;
+}
+
+@media (max-width: 390px) {
+  .engine-grid { grid-template-columns: 1fr; }
 }

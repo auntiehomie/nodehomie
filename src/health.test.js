@@ -1,11 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  appendStorageSample,
+  calculateStorageRunway,
   classifyShard,
+  nodeDatabaseSize,
   nodeMessageCount,
+  protocolUpgradeStatus,
   sampleMessageActivity,
   shardLag,
   shardHeight,
+  summarizePeerStability,
   summarizeShards,
 } from './health.js'
 
@@ -65,4 +70,47 @@ test('message activity reports delta and per-second rate', () => {
 test('counter resets and invalid elapsed time re-establish the baseline', () => {
   assert.equal(sampleMessageActivity({ total: 100, sampledAt: 1000 }, 90, 2000).delta, null)
   assert.equal(sampleMessageActivity({ total: 100, sampledAt: 1000 }, 110, 1000).perSecond, null)
+})
+
+test('reads database size from current and legacy response shapes', () => {
+  assert.equal(nodeDatabaseSize({ dbStats: { approxSize: 548529692074 } }), 548529692074)
+  assert.equal(nodeDatabaseSize({ db_stats: { approx_size: '2048' } }), 2048)
+  assert.equal(nodeDatabaseSize({}), null)
+})
+
+test('storage samples are bounded and ignore rapid duplicate samples', () => {
+  const hour = 60 * 60 * 1000
+  const samples = appendStorageSample([{ size: 100, sampledAt: hour }], 120, hour + 60_000)
+  assert.deepEqual(samples, [{ size: 100, sampledAt: hour }])
+  const next = appendStorageSample(samples, 200, hour * 2)
+  assert.equal(next.length, 2)
+})
+
+test('storage runway requires enough positive growth history', () => {
+  const day = 24 * 60 * 60 * 1000
+  const runway = calculateStorageRunway([
+    { size: 100, sampledAt: 0 },
+    { size: 200, sampledAt: day },
+  ], 300)
+  assert.equal(runway.growthPerDay, 100)
+  assert.equal(runway.daysRemaining, 3)
+  assert.equal(calculateStorageRunway([{ size: 200, sampledAt: day }], 300).growthPerDay, null)
+})
+
+test('protocol upgrade timestamps produce useful urgency states', () => {
+  const now = 2_000_000_000_000
+  assert.deepEqual(protocolUpgradeStatus(0, now), { scheduled: false, urgency: 'none' })
+  assert.equal(protocolUpgradeStatus((now + 2 * 86_400_000) / 1000, now).urgency, 'soon')
+  assert.equal(protocolUpgradeStatus(now - 1, now).urgency, 'overdue')
+})
+
+test('peer stability reports churn, sources, and known versions', () => {
+  const summary = summarizePeerStability([
+    { peer_id: 'b', source: 'derived' },
+    { peer_id: 'c', source: 'collected', contact_info: { snapchain_version: '0.14.3' } },
+  ], ['a', 'b'])
+  assert.deepEqual(summary.gained, ['c'])
+  assert.deepEqual(summary.lost, ['a'])
+  assert.deepEqual(summary.sources, { collected: 1, derived: 1, unknown: 0 })
+  assert.deepEqual(summary.versions, { '0.14.3': 1 })
 })

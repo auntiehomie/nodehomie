@@ -7,6 +7,10 @@ A mobile-friendly Snapchain node monitor. Enter your node URL (e.g. your Tailsca
 - Shard 1 and 2 health, block delay, progress rate, and height
 - Total indexed messages, messages since the previous refresh, and live indexing rate
 - Optional localhost host monitor for container state, CPU, memory, and disk space
+- Database growth history and estimated disk-space runway
+- Scheduled protocol-upgrade countdown from the node's engine timestamp
+- Peer churn, connection source, and reported peer versions
+- Collapsible shard 0 network-engine status
 - Color coded sync status (green/amber/red)
 - Auto-refresh (15s, 30s, 1m, 5m)
 - Remembers your node URL between sessions
