@@ -250,7 +250,7 @@ sudo tailscale up`}</CodeBlock>
           <p className="glabel">Shards</p>
           <p className="gp">The network splits data across shards. Your node runs shards 1 and 2. Shard 0 is the internal block shard — don't add it to <code>shard_ids</code> in config or the node will panic.</p>
           <p className="glabel">Block delay / lag</p>
-          <p className="gp">The <code>blockDelay</code> metric tells you how far behind the network tip your node is. Fresh installs show tens of millions. It decreases as the node catches up. Under 60 = basically synced.</p>
+          <p className="gp">The <code>blockDelay</code> metric is the number of seconds between a shard's newest block and the current wall clock. A synced node normally stays in the single digits; NodeHomie allows brief jitter before showing a shard as catching up.</p>
           <p className="glabel">Why does it take so long?</p>
           <p className="gp">The network has been running for a while. Snapshots help skip most history, but there's still a lot to process. Catchup runs at 8–11× so it's much faster than syncing from scratch.</p>
         </Section>
@@ -260,7 +260,7 @@ sudo tailscale up`}</CodeBlock>
           <CodeBlock>{`curl http://localhost:3381/v1/info | jq .`}</CodeBlock>
           <p className="glabel">Check block delay per shard:</p>
           <CodeBlock>{`curl -s http://localhost:3381/v1/info | jq '.shardInfos[] | {shardId, blockDelay, maxHeight}'`}</CodeBlock>
-          <p className="gp">NodeHomie shows block delay as blocks behind the network tip. It does not turn that count into a time estimate. It watches height and delay across refreshes, and only flags a shard as stalled after five minutes without progress. Shard 0 is omitted because the node uses shards 1 and 2.</p>
+          <p className="gp">NodeHomie shows <code>blockDelay</code> as elapsed time behind the wall clock and tracks block-height movement separately as the processing rate. It only flags a shard as stalled after five minutes without progress. Shard 0 appears separately as the network engine; shards 1 and 2 carry message data.</p>
           <p className="glabel">Watch disk usage:</p>
           <CodeBlock>{`watch -n 30 'df -h /mnt/ssd /mnt/ssd2 && du -sh /mnt/ssd2/.rocks/shard-*/'`}</CodeBlock>
           <p className="glabel">Optional: show container and disk health in NodeHomie</p>

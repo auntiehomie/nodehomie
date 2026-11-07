@@ -193,7 +193,7 @@
 .engine-panel summary strong { font-size: 15px; font-weight: 500; }
 .engine-panel summary small { color: var(--text-muted); font-size: 11px; }
 .engine-panel[open] summary { margin-bottom: 10px; }
-.engine-grid { grid-template-columns: repeat(3, 1fr); }
+.engine-grid { grid-template-columns: repeat(2, 1fr); }
 .shard-card.shard-syncing { border-left: 3px solid var(--amber); }
 .shard-card.shard-stalled, .shard-card.shard-missing { border-left: 3px solid var(--red); }
 .badge-syncing { background: rgba(251, 191, 36, 0.12); color: var(--amber); }
