@@ -8,9 +8,10 @@ import {
   nodeMessageCount,
   protocolUpgradeStatus,
   sampleMessageActivity,
+  shardDelaySeconds,
   shardHeight,
   shardId,
-  shardLag,
+  shardMempoolSize,
   summarizePeerStability,
   summarizeShards,
 } from './health.js'
@@ -24,6 +25,13 @@ function formatSpeed(bps) {
   if (bps < 1) return '<1 blk/s'
   if (bps < 1000) return `~${Math.round(bps)} blk/s`
   return `~${(bps / 1000).toFixed(1)}k blk/s`
+}
+
+function formatDelay(seconds) {
+  if (!Number.isFinite(seconds)) return 'Unavailable'
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`
+  return `${Math.floor(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`
 }
 
 function formatMessageRate(perSecond) {
@@ -54,7 +62,7 @@ function formatRunway(days) {
 }
 
 function ShardCard({ shard, speed, trend }) {
-  const lag = shardLag(shard)
+  const delay = shardDelaySeconds(shard)
   const height = shardHeight(shard)
   const id = shardId(shard)
   const { status, label } = classifyShard(shard, trend)
@@ -69,11 +77,11 @@ function ShardCard({ shard, speed, trend }) {
       </div>
       <div className="shard-stats">
         <div className="stat stat-full">
-          <span className="stat-label">Blocks behind network tip</span>
-          <span className={`stat-value color-${status}`} style={{ fontSize: '15px' }}>{lag === null ? 'Unavailable' : lag.toLocaleString()}</span>
+          <span className="stat-label">Sync delay behind wall clock</span>
+          <span className={`stat-value color-${status}`} style={{ fontSize: '15px' }}>{formatDelay(delay)}</span>
         </div>
         <div className="stat">
-          <span className="stat-label">Sync speed</span>
+          <span className="stat-label">Block processing rate</span>
           {status === 'synced' ? (
             <span className="stat-value color-synced" style={{ fontSize: '15px' }}>Live</span>
           ) : speed === undefined ? (
@@ -171,8 +179,9 @@ function UpgradeReadiness({ status, version }) {
 
 function EngineShard({ shard, speed, trend }) {
   if (!shard) return null
-  const lag = shardLag(shard)
+  const delay = shardDelaySeconds(shard)
   const height = shardHeight(shard)
+  const mempoolSize = shardMempoolSize(shard)
   const { status, label } = classifyShard(shard, trend)
   return (
     <details className="engine-panel">
@@ -181,9 +190,10 @@ function EngineShard({ shard, speed, trend }) {
         <span className={`badge badge-${status}`}>{label}</span>
       </summary>
       <div className="engine-grid">
-        <div><span className="stat-label">Blocks behind</span><strong>{lag === null ? 'Unavailable' : lag.toLocaleString()}</strong></div>
+        <div><span className="stat-label">Sync delay</span><strong>{formatDelay(delay)}</strong></div>
         <div><span className="stat-label">Block height</span><strong>{height === null ? 'Unavailable' : height.toLocaleString()}</strong></div>
-        <div><span className="stat-label">Progress rate</span><strong>{speed === undefined ? 'Measuring…' : formatSpeed(speed)}</strong></div>
+        <div><span className="stat-label">Processing rate</span><strong>{speed === undefined ? 'Measuring…' : formatSpeed(speed)}</strong></div>
+        <div><span className="stat-label">Mempool</span><strong>{mempoolSize === null ? 'Not reported' : mempoolSize.toLocaleString()}</strong></div>
       </div>
     </details>
   )
@@ -274,17 +284,17 @@ export default function App() {
       shardList.forEach(s => {
         const id = shardId(s)
         const h = shardHeight(s)
-        const lag = shardLag(s)
+        const delay = shardDelaySeconds(s)
         const prev = prevShardRef.current[id]
         if (prev && h !== null && prev.height !== null) {
           const elapsed = (now - prev.time) / 1000
           newSpeeds[id] = elapsed > 0 ? Math.max(0, (h - prev.height) / elapsed) : undefined
-          const improved = h > prev.height || (lag !== null && prev.lag !== null && lag < prev.lag)
+          const improved = h > prev.height || (delay !== null && prev.delay !== null && delay < prev.delay)
           const prior = trendsRef.current[id]
           const lastProgress = improved ? now : (prior?.lastProgress ?? now)
-          newTrends[id] = { advancing: improved, lastProgress, stalled: lag > 60 && now - lastProgress >= 5 * 60 * 1000 }
+          newTrends[id] = { advancing: improved, lastProgress, stalled: delay > 60 && now - lastProgress >= 5 * 60 * 1000 }
         }
-        newPrev[id] = { height: h, lag, time: now }
+        newPrev[id] = { height: h, delay, time: now }
       })
       prevShardRef.current = newPrev
       trendsRef.current = newTrends

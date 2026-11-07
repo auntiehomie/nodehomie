@@ -1,14 +1,24 @@
 export const EXPECTED_SHARDS = [1, 2]
+export const READ_NODE_MEMPOOL_SENTINEL = 0xFFFFFFFF
+export const SYNCED_DELAY_SECONDS = 30
 
 export function shardId(shard) {
   return Number(shard.shardId ?? shard.shard_id)
 }
 
-export function shardLag(shard) {
+export function shardDelaySeconds(shard) {
   const value = shard.blockDelay ?? shard.block_delay
   if (value === null || value === undefined || value === '') return null
-  const lag = Number(value)
-  return Number.isFinite(lag) && lag >= 0 ? lag : null
+  const delay = Number(value)
+  return Number.isFinite(delay) && delay >= 0 ? delay : null
+}
+
+export function shardMempoolSize(shard) {
+  const value = shard.mempoolSize ?? shard.mempool_size
+  if (value === null || value === undefined || value === '') return null
+  const size = Number(value)
+  if (!Number.isFinite(size) || size < 0 || size === READ_NODE_MEMPOOL_SENTINEL) return null
+  return size
 }
 
 export function shardHeight(shard) {
@@ -128,9 +138,9 @@ export function sampleMessageActivity(previous, total, sampledAt) {
 }
 
 export function classifyShard(shard, trend = {}) {
-  const lag = shardLag(shard)
-  if (lag === null) return { status: 'unknown', label: 'telemetry unavailable' }
-  if (lag < 60) return { status: 'synced', label: 'synced' }
+  const delay = shardDelaySeconds(shard)
+  if (delay === null) return { status: 'unknown', label: 'telemetry unavailable' }
+  if (delay < SYNCED_DELAY_SECONDS) return { status: 'synced', label: 'synced' }
   if (trend.stalled) return { status: 'stalled', label: 'no progress recently' }
   return { status: 'syncing', label: trend.advancing ? 'catching up' : 'measuring progress' }
 }

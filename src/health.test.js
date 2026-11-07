@@ -8,20 +8,21 @@ import {
   nodeMessageCount,
   protocolUpgradeStatus,
   sampleMessageActivity,
-  shardLag,
+  shardDelaySeconds,
   shardHeight,
+  shardMempoolSize,
   summarizePeerStability,
   summarizeShards,
 } from './health.js'
 
-test('blockDelay is preserved as a block count, not converted to time', () => {
-  assert.equal(shardLag({ blockDelay: 50200 }), 50200)
+test('blockDelay is interpreted as seconds behind wall clock', () => {
+  assert.equal(shardDelaySeconds({ blockDelay: 50200 }), 50200)
   assert.equal(classifyShard({ blockDelay: 50200 }).label, 'measuring progress')
 })
 
-test('only a small block delay is considered synced', () => {
-  assert.equal(classifyShard({ block_delay: 59 }).status, 'synced')
-  assert.equal(classifyShard({ block_delay: 60 }).status, 'syncing')
+test('only a brief wall-clock delay is considered synced', () => {
+  assert.equal(classifyShard({ block_delay: 29 }).status, 'synced')
+  assert.equal(classifyShard({ block_delay: 30 }).status, 'syncing')
 })
 
 test('stalled requires explicit sustained no progress signal', () => {
@@ -30,9 +31,15 @@ test('stalled requires explicit sustained no progress signal', () => {
 })
 
 test('missing or malformed telemetry stays unknown', () => {
-  assert.equal(shardLag({ blockDelay: 'unknown' }), null)
+  assert.equal(shardDelaySeconds({ blockDelay: 'unknown' }), null)
   assert.equal(shardHeight({ maxHeight: null }), null)
   assert.equal(classifyShard({}).status, 'unknown')
+})
+
+test('read-node mempool sentinel is reported as unavailable', () => {
+  assert.equal(shardMempoolSize({ mempoolSize: 4294967295 }), null)
+  assert.equal(shardMempoolSize({ mempool_size: '12' }), 12)
+  assert.equal(shardMempoolSize({ mempoolSize: 'unknown' }), null)
 })
 
 test('summary checks the configured shards 1 and 2, not internal shard 0', () => {
