@@ -1,17 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   EXPECTED_SHARDS,
+  appendStorageSample,
+  calculateStorageRunway,
   classifyShard,
+  nodeDatabaseSize,
   nodeMessageCount,
+  protocolUpgradeStatus,
   sampleMessageActivity,
   shardHeight,
   shardId,
   shardLag,
+  summarizePeerStability,
   summarizeShards,
 } from './health.js'
 import './App.css'
 
 const STORAGE_KEY = 'nodehomie_url'
+const STORAGE_HISTORY_PREFIX = 'nodehomie_storage_history:'
 
 function formatSpeed(bps) {
   if (bps === undefined || bps === null) return '—'
@@ -26,6 +32,25 @@ function formatMessageRate(perSecond) {
   if (perSecond < 0.1) return '<0.1 msg/s'
   if (perSecond < 100) return `${perSecond.toFixed(1)} msg/s`
   return `${Math.round(perSecond).toLocaleString()} msg/s`
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes)) return 'Unavailable'
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value >= 100 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`
+}
+
+function formatRunway(days) {
+  if (!Number.isFinite(days)) return 'Measuring…'
+  if (days < 1) return '<1 day'
+  if (days < 90) return `~${Math.round(days)} days`
+  return `~${(days / 30.4).toFixed(1)} months`
 }
 
 function ShardCard({ shard, speed, trend }) {
@@ -88,6 +113,82 @@ function peerAddress(peer) {
     peer.contactInfo?.gossipAddress ?? ''
 }
 
+function peerVersion(peer) {
+  return peer.contact_info?.snapchain_version ?? peer.contactInfo?.snapchainVersion ?? ''
+}
+
+function StorageOutlook({ outlook, monitorConnected }) {
+  if (!outlook) return null
+  const lowRunway = Number.isFinite(outlook.daysRemaining) && outlook.daysRemaining < 30
+  return (
+    <section className={`operator-card ${lowRunway ? 'operator-warning' : ''}`} aria-labelledby="storage-outlook-title">
+      <div className="operator-card-header">
+        <h2 id="storage-outlook-title">Storage outlook</h2>
+        <span>{lowRunway ? 'Needs attention' : 'Database growth'}</span>
+      </div>
+      <div className="operator-grid">
+        <div><span className="stat-label">Database size</span><strong>{formatBytes(outlook.size)}</strong></div>
+        <div><span className="stat-label">Database drive free</span><strong>{formatBytes(outlook.freeBytes)}</strong></div>
+        <div><span className="stat-label">Growth per day</span><strong>{outlook.growthPerDay ? formatBytes(outlook.growthPerDay) : 'Measuring…'}</strong></div>
+        <div><span className="stat-label">Estimated runway</span><strong>{formatRunway(outlook.daysRemaining)}</strong></div>
+      </div>
+      <p className="operator-note">
+        {!monitorConnected
+          ? 'Connect the optional machine-health monitor to calculate remaining disk runway.'
+          : outlook.growthPerDay === null
+            ? 'NodeHomie needs at least 15 minutes of database history before estimating growth.'
+            : 'Estimate uses recent database growth and current free space; snapshot cleanup and compaction can change it.'}
+      </p>
+    </section>
+  )
+}
+
+function UpgradeReadiness({ status, version }) {
+  const warning = status.urgency === 'soon' || status.urgency === 'overdue'
+  return (
+    <section className={`operator-card ${warning ? 'operator-warning' : ''}`} aria-labelledby="upgrade-title">
+      <div className="operator-card-header">
+        <h2 id="upgrade-title">Protocol readiness</h2>
+        <span>{version || 'Version unavailable'}</span>
+      </div>
+      {status.scheduled ? (
+        <>
+          <strong className="operator-primary">
+            {status.urgency === 'overdue'
+              ? 'Scheduled activation time has passed'
+              : `${Math.max(1, Math.ceil(status.daysRemaining))} day${Math.ceil(status.daysRemaining) === 1 ? '' : 's'} until activation`}
+          </strong>
+          <p className="operator-note">
+            {new Date(status.scheduledAt).toLocaleString()} · Confirm this node release supports the scheduled engine version before activation.
+          </p>
+        </>
+      ) : (
+        <p className="operator-note">The node is not reporting a scheduled engine upgrade.</p>
+      )}
+    </section>
+  )
+}
+
+function EngineShard({ shard, speed, trend }) {
+  if (!shard) return null
+  const lag = shardLag(shard)
+  const height = shardHeight(shard)
+  const { status, label } = classifyShard(shard, trend)
+  return (
+    <details className="engine-panel">
+      <summary>
+        <span><strong>Network engine</strong><small>Shard 0 orders message-shard blocks</small></span>
+        <span className={`badge badge-${status}`}>{label}</span>
+      </summary>
+      <div className="engine-grid">
+        <div><span className="stat-label">Blocks behind</span><strong>{lag === null ? 'Unavailable' : lag.toLocaleString()}</strong></div>
+        <div><span className="stat-label">Block height</span><strong>{height === null ? 'Unavailable' : height.toLocaleString()}</strong></div>
+        <div><span className="stat-label">Progress rate</span><strong>{speed === undefined ? 'Measuring…' : formatSpeed(speed)}</strong></div>
+      </div>
+    </details>
+  )
+}
+
 function HostHealth({ health }) {
   if (!health) return (
     <section className="host-health host-unavailable">
@@ -125,10 +226,13 @@ export default function App() {
   const [trends, setTrends] = useState({})
   const [hostHealth, setHostHealth] = useState(null)
   const [messageActivity, setMessageActivity] = useState(null)
+  const [storageOutlook, setStorageOutlook] = useState(null)
+  const [peerActivity, setPeerActivity] = useState(null)
   const timerRef = useRef(null)
   const prevShardRef = useRef({})
   const prevMessageRef = useRef(null)
   const trendsRef = useRef({})
+  const peerIdsRef = useRef(null)
 
   const fetchData = useCallback(async (targetUrl) => {
     if (!targetUrl) return
@@ -203,10 +307,14 @@ export default function App() {
         if (!normalized) throw new Error('Unexpected response from peer endpoint')
         setPeers(normalized.count)
         setPeerList(normalized.peers)
+        const activity = summarizePeerStability(normalized.peers, peerIdsRef.current ?? [])
+        setPeerActivity(peerIdsRef.current === null ? { ...activity, gained: [], lost: [] } : activity)
+        peerIdsRef.current = activity.ids
         setPeerError(null)
       } catch (peerFetchError) {
         setPeers(null)
         setPeerList([])
+        setPeerActivity(null)
         setPeerError(peerFetchError?.message || 'Peer endpoint unavailable')
       }
     } catch (e) {
@@ -229,6 +337,21 @@ export default function App() {
     if (url) fetchData(url)
   }, [url, fetchData])
 
+  useEffect(() => {
+    const size = nodeDatabaseSize(data)
+    if (!url || size === null) {
+      setStorageOutlook(null)
+      return
+    }
+    const key = `${STORAGE_HISTORY_PREFIX}${url}`
+    let previous = []
+    try { previous = JSON.parse(localStorage.getItem(key) || '[]') } catch { previous = [] }
+    const samples = appendStorageSample(previous, size, Date.now())
+    try { localStorage.setItem(key, JSON.stringify(samples)) } catch { /* Storage history is optional. */ }
+    const databaseDisk = hostHealth?.disks?.find(disk => disk.name === 'database')
+    setStorageOutlook(calculateStorageRunway(samples, databaseDisk?.free_bytes))
+  }, [data, hostHealth, url])
+
   function connect() {
     const trimmed = inputUrl.trim()
     if (!trimmed) return
@@ -249,19 +372,24 @@ export default function App() {
     trendsRef.current = {}
     setHostHealth(null)
     setMessageActivity(null)
+    setStorageOutlook(null)
+    setPeerActivity(null)
     prevShardRef.current = {}
     prevMessageRef.current = null
+    peerIdsRef.current = null
     setError(null)
     clearInterval(timerRef.current)
   }
 
   const shards = data?.shardInfos ?? data?.shard_infos ?? []
   const visibleShards = shards.filter(s => EXPECTED_SHARDS.includes(shardId(s)))
+  const engineShard = shards.find(s => shardId(s) === 0)
   const shardSummary = summarizeShards(shards, trends)
   const infoPeerCount = data?.numPeers ?? data?.num_peers
   const peerDisplay = peers ?? infoPeerCount ?? (peerError ? 'Unavailable' : '—')
   const version = data?.version ? `v${data.version}` : null
   const shardsSynced = shardSummary.every(s => s.status === 'synced')
+  const upgradeStatus = protocolUpgradeStatus(data?.nextEngineVersionTimestamp ?? data?.next_engine_version_timestamp)
 
   return (
     <div className="app">
@@ -313,6 +441,8 @@ export default function App() {
                 <span>Shards 1 and 2: {shardSummary.map(s => `#${s.id} ${s.label}`).join(' · ')}</span>
               </section>
               <HostHealth health={hostHealth} />
+              <StorageOutlook outlook={storageOutlook} monitorConnected={Boolean(hostHealth)} />
+              <UpgradeReadiness status={upgradeStatus} version={version} />
               <div className="top-stats">
                 <div className="top-stat">
                   <span className="stat-label">Peers</span>
@@ -376,23 +506,36 @@ export default function App() {
                 {peerError ? (
                   <p className="peer-empty">Could not load peer connections ({peerError}). The node is reachable, but its peer endpoint did not return usable data.</p>
                 ) : peerList.length > 0 ? (
-                  <ul className="peer-list">
-                    {peerList.map((peer, index) => (
-                      <li className="peer-row" key={`${peerId(peer)}-${index}`}>
-                        <span className="peer-id" title={peerId(peer)}>{peerId(peer)}</span>
-                        <span className="peer-meta">
-                          {peer.source && <span className="peer-source">{peer.source}</span>}
-                          {peerAddress(peer) && <span className="peer-address" title={peerAddress(peer)}>{peerAddress(peer)}</span>}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  <>
+                    {peerActivity && (
+                      <div className="peer-summary">
+                        <span>{peerActivity.sources.collected} collected</span>
+                        <span>{peerActivity.sources.derived} derived</span>
+                        <span>{peerActivity.gained.length ? `+${peerActivity.gained.length} joined` : 'No joins'}</span>
+                        <span>{peerActivity.lost.length ? `−${peerActivity.lost.length} dropped` : 'No drops'}</span>
+                      </div>
+                    )}
+                    <ul className="peer-list">
+                      {peerList.map((peer, index) => (
+                        <li className="peer-row" key={`${peerId(peer)}-${index}`}>
+                          <span className="peer-id" title={peerId(peer)}>{peerId(peer)}</span>
+                          <span className="peer-meta">
+                            {peer.source && <span className="peer-source">{peer.source}</span>}
+                            {peerVersion(peer) && <span className="peer-version">v{peerVersion(peer)}</span>}
+                            {peerAddress(peer) && <span className="peer-address" title={peerAddress(peer)}>{peerAddress(peer)}</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 ) : peers > 0 ? (
                   <p className="peer-empty">The node reports {peers} connected peers, but did not include peer details.</p>
                 ) : (
                   <p className="peer-empty">No connected peers are currently reported by the node.</p>
                 )}
               </section>
+
+              <EngineShard shard={engineShard} speed={speeds[0]} trend={trends[0]} />
 
               <div className="shards-list">
                 {visibleShards.map(s => (
