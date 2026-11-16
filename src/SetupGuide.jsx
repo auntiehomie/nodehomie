@@ -281,6 +281,10 @@ curl -s http://127.0.0.1:3390/ | jq .`}</CodeBlock>
           <p className="gp">Set <code>User=homie</code> and <code>Group=docker</code> under <code>[Service]</code> in the unit file before enabling it (replace <code>homie</code> with your Ubuntu username). Add the monitor to the node's existing Tailscale Serve configuration:</p>
           <CodeBlock>{`sudo tailscale serve --bg --set-path=/node-healthz http://127.0.0.1:3390`}</CodeBlock>
           <p className="gp">After deploying the updated NodeHomie, enter your existing Tailscale HTTPS node address. The monitor will show container state, CPU, memory, and free disk when the helper is reachable. Never enable Tailscale Funnel for this endpoint.</p>
+          <p className="gp">The Cast index backfill card uses the same host monitor to show the latest indexed cast count and completion status per shard and source. If you already installed the helper, update your checkout, then reinstall the helper:</p>
+          <CodeBlock>{`git -C ~/nodehomie pull --ff-only
+sudo install -m 644 ~/nodehomie/host-health/server.py /opt/nodehomie-host-health/server.py
+sudo systemctl restart nodehomie-host-health`}</CodeBlock>
           <p className="gp">Grafana dashboard is available at <code>http://your-tailscale-ip:3000</code></p>
           <p className="glabel">Key metrics:</p>
           <ul className="glist">

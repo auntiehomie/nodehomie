@@ -2,6 +2,7 @@
 """Read-only localhost health endpoint for NodeHomie."""
 import json
 import os
+import re
 import shutil
 import subprocess
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -12,6 +13,11 @@ CONTAINER = os.getenv("NODEHOMIE_CONTAINER", "hypersnap-hypersnap-1")
 DB_PATH = os.getenv("NODEHOMIE_DB_PATH", "/home/homie/hypersnap/.rocks")
 STAGING_PATH = os.getenv("NODEHOMIE_STAGING_PATH", "/mnt/hypersnap-staging")
 ALLOWED_ORIGIN = os.getenv("NODEHOMIE_ALLOWED_ORIGIN", "")
+BACKFILL_PROGRESS = re.compile(
+    r"^(\S+) .*\bCast hash store backfill progress "
+    r"shard_id=(\d+) source_prefix=(\d+) casts_indexed=(\d+) "
+    r"last_fid=(\d+) complete=(true|false)\s*$"
+)
 
 
 def docker_json(*args):
@@ -19,8 +25,44 @@ def docker_json(*args):
     return json.loads(result.stdout)
 
 
+def parse_cast_index_progress(logs):
+    latest = {}
+    for line in logs.splitlines():
+        match = BACKFILL_PROGRESS.match(line)
+        if match:
+            timestamp, shard, source, count, fid, complete = match.groups()
+            key = (int(shard), int(source))
+            if key not in latest or timestamp >= latest[key]["reported_at"]:
+                latest[key] = {
+                    "shard_id": key[0],
+                    "source_prefix": key[1],
+                    "casts_indexed": int(count),
+                    "last_fid": int(fid),
+                    "complete": complete == "true",
+                    "reported_at": timestamp,
+                }
+    return [latest[key] for key in sorted(latest)]
+
+
+def collect_cast_index(state):
+    if not state.get("Running") or not state.get("StartedAt"):
+        return {"status": "unavailable", "sources": []}
+    try:
+        result = subprocess.run(
+            ["docker", "logs", "--timestamps", "--since", state["StartedAt"],
+             "--tail", "2000", CONTAINER],
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, errors="replace", timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {"status": "unavailable", "sources": []}
+    sources = parse_cast_index_progress(result.stdout)
+    return {"status": "reported" if sources else "no_recent_progress", "sources": sources}
+
+
 def collect_health():
     warnings = []
+    state = {}
     try:
         details = docker_json("inspect", CONTAINER)[0]
         state = details.get("State", {})
@@ -54,7 +96,8 @@ def collect_health():
         except OSError as exc:
             warnings.append(f"Disk path unavailable ({path}): {exc}")
 
-    return {"container": container, "disks": disks, "warnings": warnings}
+    return {"container": container, "disks": disks, "warnings": warnings,
+            "cast_index": collect_cast_index(state)}
 
 
 class Handler(BaseHTTPRequestHandler):

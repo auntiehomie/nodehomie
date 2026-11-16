@@ -170,6 +170,8 @@
 .host-warning .host-health-heading > span { color: var(--red); }
 .host-metrics { display: flex; flex-wrap: wrap; gap: 6px 12px; color: var(--text); font-size: 12px; }
 .host-health p { margin-top: 8px; }
+.cast-index-sources { list-style: none; display: grid; gap: 8px; padding: 0; margin: 10px 0 0; }
+.cast-index-sources li { display: grid; gap: 3px; font-size: 13px; }
 .operator-card, .engine-panel {
   background: var(--bg-card);
   border: 1px solid var(--border);
