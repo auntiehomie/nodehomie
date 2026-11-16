@@ -13,6 +13,7 @@ CONTAINER = os.getenv("NODEHOMIE_CONTAINER", "hypersnap-hypersnap-1")
 DB_PATH = os.getenv("NODEHOMIE_DB_PATH", "/home/homie/hypersnap/.rocks")
 STAGING_PATH = os.getenv("NODEHOMIE_STAGING_PATH", "/mnt/hypersnap-staging")
 ALLOWED_ORIGIN = os.getenv("NODEHOMIE_ALLOWED_ORIGIN", "")
+ANSI_CSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 BACKFILL_PROGRESS = re.compile(
     r"^(\S+) .*\bCast hash store backfill progress "
     r"shard_id=(\d+) source_prefix=(\d+) casts_indexed=(\d+) "
@@ -28,7 +29,7 @@ def docker_json(*args):
 def parse_cast_index_progress(logs):
     latest = {}
     for line in logs.splitlines():
-        match = BACKFILL_PROGRESS.match(line)
+        match = BACKFILL_PROGRESS.match(ANSI_CSI.sub("", line))
         if match:
             timestamp, shard, source, count, fid, complete = match.groups()
             key = (int(shard), int(source))
