@@ -221,6 +221,34 @@ function HostHealth({ health }) {
   )
 }
 
+function CastIndexProgress({ progress }) {
+  return (
+    <section className="host-health" aria-label="Cast index backfill">
+      <h2>Cast index backfill</h2>
+      <p className="health-note">Indexes stored casts independently of block sync.</p>
+      {progress?.status === 'reported' && progress.sources?.length > 0 ? (
+        <ul className="cast-index-sources">
+          {progress.sources.map(source => (
+            <li key={`${source.shard_id}:${source.source_prefix}`}>
+              <strong>Shard {source.shard_id} · Source {source.source_prefix}</strong>
+              <span>{source.casts_indexed.toLocaleString()} casts indexed · {source.complete ? 'Complete' : 'In progress'}</span>
+              <span className="health-note">
+                Last FID {source.last_fid.toLocaleString()} · {new Date(source.reported_at).toLocaleTimeString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="health-note">
+          {progress?.status === 'no_recent_progress'
+            ? 'No progress reported in the recent node logs.'
+            : 'Progress unavailable. This metric requires the updated host monitor.'}
+        </p>
+      )}
+    </section>
+  )
+}
+
 export default function App() {
   const [url, setUrl] = useState(() => localStorage.getItem(STORAGE_KEY) || '')
   const [inputUrl, setInputUrl] = useState(() => localStorage.getItem(STORAGE_KEY) || '')
@@ -243,6 +271,7 @@ export default function App() {
   const prevMessageRef = useRef(null)
   const trendsRef = useRef({})
   const peerIdsRef = useRef(null)
+  const hostRequestRef = useRef(null)
 
   const fetchData = useCallback(async (targetUrl) => {
     if (!targetUrl) return
@@ -254,8 +283,24 @@ export default function App() {
       setLoading(false)
       return
     }
+    const base = targetUrl.replace(/\/$/, '')
+    hostRequestRef.current?.abort()
+    const hostRequest = new AbortController()
+    hostRequestRef.current = hostRequest
+    const hostTimeout = setTimeout(() => hostRequest.abort(), 8000)
+    fetch(`${base}/node-healthz`, { signal: hostRequest.signal })
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        return response.json()
+      })
+      .then(health => {
+        if (hostRequestRef.current === hostRequest) setHostHealth(health)
+      })
+      .catch(() => {
+        if (hostRequestRef.current === hostRequest) setHostHealth(null)
+      })
+      .finally(() => clearTimeout(hostTimeout))
     try {
-      const base = targetUrl.replace(/\/$/, '')
       const [infoRes, peersRes] = await Promise.allSettled([
         fetch(`${base}/v1/info`),
         fetch(`${base}/v1/currentPeers`),
@@ -301,13 +346,6 @@ export default function App() {
       setSpeeds(newSpeeds)
       setTrends(newTrends)
       try {
-        const healthResponse = await fetch(`${base}/node-healthz`, { signal: AbortSignal.timeout(4000) })
-        if (!healthResponse.ok) throw new Error(`HTTP ${healthResponse.status}`)
-        setHostHealth(await healthResponse.json())
-      } catch {
-        setHostHealth(null)
-      }
-      try {
         if (peersRes.status === 'rejected') throw peersRes.reason
         let response = peersRes.value
         // Older node builds may expose only the legacy route.
@@ -344,7 +382,12 @@ export default function App() {
   }, [url, refreshInterval, fetchData])
 
   useEffect(() => {
+    setHostHealth(null)
     if (url) fetchData(url)
+    return () => {
+      hostRequestRef.current?.abort()
+      hostRequestRef.current = null
+    }
   }, [url, fetchData])
 
   useEffect(() => {
@@ -443,6 +486,8 @@ export default function App() {
               )}
             </div>
           )}
+
+          <CastIndexProgress progress={hostHealth?.cast_index} />
 
           {data && (
             <>
