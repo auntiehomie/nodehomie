@@ -6,6 +6,24 @@ import server
 
 
 class HostHealthTests(unittest.TestCase):
+    def test_cast_index_parses_docker_timestamps_and_colored_tracing_fields(self):
+        line = (
+            "2026-11-16T19:19:30.336686021Z 2026-11-16T19:19:30.336513Z "
+            "\x1b[32m INFO\x1b[0m snapchain::api::cast_hash_index: "
+            "Cast hash store backfill progress "
+            "\x1b[3mshard_id\x1b[0m\x1b[2m=\x1b[0m2 "
+            "\x1b[3msource_prefix\x1b[0m=30 casts_indexed=22379899 "
+            "last_fid=309819 complete=false\x1b[0m"
+        )
+        self.assertEqual(server.parse_cast_index_progress(line), [{
+            "shard_id": 2,
+            "source_prefix": 30,
+            "casts_indexed": 22379899,
+            "last_fid": 309819,
+            "complete": False,
+            "reported_at": "2026-11-16T19:19:30.336686021Z",
+        }])
+
     @patch("server.subprocess.run")
     def test_cast_index_reports_latest_progress_by_shard_and_source(self, run):
         def progress(second, shard, source, count, complete):
