@@ -1,3 +1,4 @@
+import IncidentTimeline from './IncidentTimeline'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   EXPECTED_SHARDS,
@@ -488,6 +489,7 @@ export default function App() {
           )}
 
           <CastIndexProgress progress={hostHealth?.cast_index} />
+          <IncidentTimeline events={hostHealth?.incidents} />
 
           {data && (
             <>

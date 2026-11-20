@@ -267,7 +267,7 @@ sudo tailscale up`}</CodeBlock>
           <p className="gp">This read-only helper runs on the node machine, binds only to localhost, and reads Docker and disk usage. Replace <code>homie</code>, the two data paths, and the Vercel origin with your own values. It does not expose the Docker socket to the web app.</p>
           <CodeBlock>{`git clone https://github.com/auntiehomie/nodehomie.git ~/nodehomie
 sudo install -d -m 755 /opt/nodehomie-host-health
-sudo install -m 644 ~/nodehomie/host-health/server.py /opt/nodehomie-host-health/server.py
+sudo install -m 644 ~/nodehomie/host-health/{server,incidents}.py /opt/nodehomie-host-health/
 sudo install -m 644 ~/nodehomie/host-health/nodehomie-host-health.service /etc/systemd/system/
 sudo tee /etc/default/nodehomie-host-health >/dev/null <<'EOF'
 NODEHOMIE_CONTAINER=hypersnap-hypersnap-1
@@ -283,7 +283,10 @@ curl -s http://127.0.0.1:3390/ | jq .`}</CodeBlock>
           <p className="gp">After deploying the updated NodeHomie, enter your existing Tailscale HTTPS node address. The monitor will show container state, CPU, memory, and free disk when the helper is reachable. Never enable Tailscale Funnel for this endpoint.</p>
           <p className="gp">The Cast index backfill card uses the same host monitor to show the latest indexed cast count and completion status per shard and source. If you already installed the helper, update your checkout, then reinstall the helper:</p>
           <CodeBlock>{`git -C ~/nodehomie pull --ff-only
-sudo install -m 644 ~/nodehomie/host-health/server.py /opt/nodehomie-host-health/server.py
+sudo install -m 644 ~/nodehomie/host-health/{server,incidents}.py /opt/nodehomie-host-health/
+sudo mkdir -p /etc/systemd/system/nodehomie-host-health.service.d
+printf '[Service]\\nStateDirectory=nodehomie-host-health\\nStateDirectoryMode=0700\\n' | sudo tee /etc/systemd/system/nodehomie-host-health.service.d/recorder.conf >/dev/null
+sudo systemctl daemon-reload
 sudo systemctl restart nodehomie-host-health`}</CodeBlock>
           <p className="gp">Grafana dashboard is available at <code>http://your-tailscale-ip:3000</code></p>
           <p className="glabel">Key metrics:</p>

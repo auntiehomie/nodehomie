@@ -5,6 +5,8 @@ Requires=docker.service
 
 [Service]
 Type=simple
+StateDirectory=nodehomie-host-health
+StateDirectoryMode=0700
 EnvironmentFile=-/etc/default/nodehomie-host-health
 ExecStart=/usr/bin/python3 /opt/nodehomie-host-health/server.py
 Restart=on-failure

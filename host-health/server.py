@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read-only localhost health endpoint for NodeHomie."""
 import json
+import incidents
 import os
 import re
 import shutil
@@ -98,7 +99,7 @@ def collect_health():
             warnings.append(f"Disk path unavailable ({path}): {exc}")
 
     return {"container": container, "disks": disks, "warnings": warnings,
-            "cast_index": collect_cast_index(state)}
+            "incidents": incidents.recent(), "cast_index": collect_cast_index(state)}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -122,4 +123,5 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    incidents.start(CONTAINER)
     HTTPServer((HOST, PORT), Handler).serve_forever()
