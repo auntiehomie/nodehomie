@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+// Read-only projection of Hypersnap's rpc.proto and blocks.proto.
+service HubService {
+  rpc GetBlocks(BlocksRequest) returns (stream Block);
+  rpc GetShardChunks(ShardChunksRequest) returns (ShardChunksResponse);
+}
+message BlocksRequest { uint64 start_block_number = 2; optional uint64 stop_block_number = 3; }
+message ShardChunksRequest { uint32 shard_id = 1; uint64 start_block_number = 2; optional uint64 stop_block_number = 3; }
+message ShardChunksResponse { repeated Block shard_chunks = 1; }
+// Block and ShardChunk both encode commits in field 4.
+message Block { Commits commits = 4; }
+message Commits { Height height = 1; repeated CommitSignature signatures = 4; }
+message Height { uint32 shard_index = 1; uint64 block_number = 2; }
+message CommitSignature { bytes signer = 1; bytes signature = 2; }

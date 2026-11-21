@@ -16,7 +16,7 @@ export default function IncidentTimeline({ events }) {
     <details className="host-health">
       <summary>Incident timeline</summary>
       {!Array.isArray(events) ? <p>History unavailable. Check the host monitor and its recorder update in Setup.</p> : <>
-        <p>Latest {events.length} recorded events. {signing ? `Last observed signing evidence: ${signing.message} at ${new Date(signing.time).toLocaleString()}.` : 'Validator signing participation is unknown.'}</p>
+        <p>Latest {events.length} recorded events. {signing ? `Last observed signing evidence: ${signing.message} at ${new Date(signing.time).toLocaleString()}.` : 'No explicit signing event in these logs.'}</p>
         {events.length > 0 && <button onClick={copy}>Copy incident report</button>}
         <span role="status">{feedback}</span>
         <ol>{events.map((event, index) => <li key={index}>

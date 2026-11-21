@@ -267,7 +267,8 @@ sudo tailscale up`}</CodeBlock>
           <p className="gp">This read-only helper runs on the node machine, binds only to localhost, and reads Docker and disk usage. Replace <code>homie</code>, the two data paths, and the Vercel origin with your own values. It does not expose the Docker socket to the web app.</p>
           <CodeBlock>{`git clone https://github.com/auntiehomie/nodehomie.git ~/nodehomie
 sudo install -d -m 755 /opt/nodehomie-host-health
-sudo install -m 644 ~/nodehomie/host-health/{server,incidents}.py /opt/nodehomie-host-health/
+docker pull fullstorydev/grpcurl:v1.9.3
+sudo install -m 644 ~/nodehomie/host-health/{server.py,incidents.py,validators.py,certificates.proto} /opt/nodehomie-host-health/
 sudo install -m 644 ~/nodehomie/host-health/nodehomie-host-health.service /etc/systemd/system/
 sudo tee /etc/default/nodehomie-host-health >/dev/null <<'EOF'
 NODEHOMIE_CONTAINER=hypersnap-hypersnap-1
@@ -281,9 +282,11 @@ curl -s http://127.0.0.1:3390/ | jq .`}</CodeBlock>
           <p className="gp">Set <code>User=homie</code> and <code>Group=docker</code> under <code>[Service]</code> in the unit file before enabling it (replace <code>homie</code> with your Ubuntu username). Add the monitor to the node's existing Tailscale Serve configuration:</p>
           <CodeBlock>{`sudo tailscale serve --bg --set-path=/node-healthz http://127.0.0.1:3390`}</CodeBlock>
           <p className="gp">After deploying the updated NodeHomie, enter your existing Tailscale HTTPS node address. The monitor will show container state, CPU, memory, and free disk when the helper is reachable. Never enable Tailscale Funnel for this endpoint.</p>
+          <p className="gp">Voting samples use local gRPC on port 3383. The helper reads the Ed25519 identity from local node info. For a separate voting identity, set NODEHOMIE_VALIDATOR_PUBLIC_KEY in /etc/default/nodehomie-host-health to the 64-character hex public key. Validator roles use the mounted /app/validators.toml and require Python 3.11+ or python3-tomli.</p>
           <p className="gp">The Cast index backfill card uses the same host monitor to show the latest indexed cast count and completion status per shard and source. If you already installed the helper, update your checkout, then reinstall the helper:</p>
           <CodeBlock>{`git -C ~/nodehomie pull --ff-only
-sudo install -m 644 ~/nodehomie/host-health/{server,incidents}.py /opt/nodehomie-host-health/
+docker pull fullstorydev/grpcurl:v1.9.3
+sudo install -m 644 ~/nodehomie/host-health/{server.py,incidents.py,validators.py,certificates.proto} /opt/nodehomie-host-health/
 sudo mkdir -p /etc/systemd/system/nodehomie-host-health.service.d
 printf '[Service]\\nStateDirectory=nodehomie-host-health\\nStateDirectoryMode=0700\\n' | sudo tee /etc/systemd/system/nodehomie-host-health.service.d/recorder.conf >/dev/null
 sudo systemctl daemon-reload
