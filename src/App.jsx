@@ -1,3 +1,4 @@
+import { PeerIdentity, ValidatorEvidence } from './ValidatorEvidence'
 import IncidentTimeline from './IncidentTimeline'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
@@ -441,6 +442,10 @@ export default function App() {
   const shardSummary = summarizeShards(shards, trends)
   const infoPeerCount = data?.numPeers ?? data?.num_peers
   const peerDisplay = peers ?? infoPeerCount ?? (peerError ? 'Unavailable' : '—')
+  const evidence = hostHealth?.validator_evidence
+  const nodeId = data?.peerId ?? data?.peer_id
+  const matchingEvidence = nodeId && evidence?.identity === nodeId ? evidence : null
+  const evidenceStale = Date.now() / 1000 - (matchingEvidence?.checked_at ?? 0) > 150
   const version = data?.version ? `v${data.version}` : null
   const shardsSynced = shardSummary.every(s => s.status === 'synced')
   const upgradeStatus = protocolUpgradeStatus(data?.nextEngineVersionTimestamp ?? data?.next_engine_version_timestamp)
@@ -489,6 +494,7 @@ export default function App() {
           )}
 
           <CastIndexProgress progress={hostHealth?.cast_index} />
+          <ValidatorEvidence evidence={matchingEvidence} stale={evidenceStale} />
           <IncidentTimeline events={hostHealth?.incidents} />
 
           {data && (
@@ -575,7 +581,7 @@ export default function App() {
                     <ul className="peer-list">
                       {peerList.map((peer, index) => (
                         <li className="peer-row" key={`${peerId(peer)}-${index}`}>
-                          <span className="peer-id" title={peerId(peer)}>{peerId(peer)}</span>
+                          <PeerIdentity id={peerId(peer)} evidence={evidenceStale ? null : matchingEvidence} />
                           <span className="peer-meta">
                             {peer.source && <span className="peer-source">{peer.source}</span>}
                             {peerVersion(peer) && <span className="peer-version">v{peerVersion(peer)}</span>}
