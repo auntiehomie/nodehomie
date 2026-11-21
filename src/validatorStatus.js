@@ -1,8 +1,11 @@
+import { consensusId } from './validatorRoster.js'
+
 export function peerRole(id, meshPeer, shards = []) {
-  const active = shards.filter(row => row.active?.includes(id)).map(row => row.id)
+  const signerId = consensusId(meshPeer?.consensus_public_key)
+  const active = shards.filter(row => row.active?.includes(id) || (signerId && row.active?.includes(signerId))).map(row => row.id)
   if (active.length) return 'Validator · shards ' + active.join(', ')
   if (meshPeer?.node_type === 'validator') return 'Validator'
-  if (meshPeer?.node_type === 'non-val') return 'Non-validator'
+  if (meshPeer?.node_type === 'non-val') return 'Mesh reports non-validator'
   if (shards.length && shards.every(row => Array.isArray(row.active))) return 'Outside sampled validator sets'
   return 'Role unknown'
 }
