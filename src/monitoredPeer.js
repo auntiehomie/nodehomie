@@ -1,0 +1,1 @@
+export const monitoredPeer = '12D3KooW9uPjmgKNasKiu6j8D4h5pRCLNwLDJxovaAccnz3iRFvS'
