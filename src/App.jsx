@@ -1,4 +1,5 @@
 import { PeerIdentity, ValidatorEvidence } from './ValidatorEvidence'
+import { monitoredPeer } from './monitoredPeer.js'
 import IncidentTimeline from './IncidentTimeline'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
@@ -461,6 +462,26 @@ export default function App() {
   const matchingMesh = mesh?.base === url.replace(/\/$/, '') && mesh.self.peer_id === nodeId ? mesh : null
   const matchingEvidence = nodeId && evidence?.identity === nodeId ? evidence : null
   const evidenceStale = Date.now() / 1000 - (matchingEvidence?.checked_at ?? 0) > 150
+  const [publicSample, setPublicSample] = useState(null)
+  const [sampleError, setSampleError] = useState(false)
+  const needsPublic = nodeId === monitoredPeer && (evidenceStale || !matchingEvidence?.shards?.some(s => s.votes?.checked > 0))
+  useEffect(() => {
+    if (!needsPublic) return
+    const controller = new AbortController()
+    fetch('/api/validator-votes', { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error('RPC unavailable')
+        const sample = await response.json()
+        if (sample.identity !== monitoredPeer || !Array.isArray(sample.shards)) throw new Error('Unexpected sample')
+        if (!controller.signal.aborted) {
+          setPublicSample(sample)
+          setSampleError(false)
+        }
+      })
+      .catch(() => { if (!controller.signal.aborted) setSampleError(true) })
+    return () => controller.abort()
+  }, [needsPublic, lastUpdated])
+  const voteSample = needsPublic && publicSample ? publicSample : matchingEvidence
   const version = data?.version ? `v${data.version}` : null
   const shardsSynced = shardSummary.every(s => s.status === 'synced')
   const upgradeStatus = protocolUpgradeStatus(data?.nextEngineVersionTimestamp ?? data?.next_engine_version_timestamp)
@@ -509,7 +530,7 @@ export default function App() {
           )}
 
           <CastIndexProgress progress={hostHealth?.cast_index} />
-          <ValidatorEvidence self={matchingMesh?.self} evidence={matchingEvidence} stale={evidenceStale} />
+          <ValidatorEvidence self={matchingMesh?.self} evidence={voteSample} publicLookup={needsPublic} sampleError={needsPublic && sampleError} stale={Date.now() / 1000 - (voteSample?.checked_at ?? 0) > 150} />
           <IncidentTimeline events={hostHealth?.incidents} />
 
           {data && (

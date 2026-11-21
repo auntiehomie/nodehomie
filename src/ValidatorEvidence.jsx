@@ -11,14 +11,15 @@ export function PeerIdentity({ id, meshPeer, evidence }) {
   </>
 }
 
-export function ValidatorEvidence({ self, evidence, stale }) {
+export function ValidatorEvidence({ self, evidence, stale, publicLookup, sampleError }) {
   return <section className="host-health" aria-label="Validator voting">
     <h2>Validator voting</h2>
     {typeof self?.is_validator === 'boolean' &&
       <p>Node role · {self.is_validator ? 'Validator' : 'Non-validator'}</p>}
     <strong>{votingStatus(evidence?.shards, stale)}</strong>
+    {sampleError && <p>Public RPC unavailable. Refresh to retry.</p>}
     {evidence?.shards?.length ? <>
-      <p>{stale ? 'Stale sample' : 'Certificates checked'} · {new Date(evidence.checked_at * 1000).toLocaleString()}</p>
+      <p>{stale ? 'Stale sample' : evidence.source || 'Host helper'} · {new Date(evidence.checked_at * 1000).toLocaleString()}</p>
       {evidence.shards.map(row => <p key={row.id}>
         <strong>Shard {row.id}</strong> · {row.votes?.checked
           ? `Signed ${row.votes.signed} of ${row.votes.checked} sampled commits`
@@ -26,6 +27,6 @@ export function ValidatorEvidence({ self, evidence, stale }) {
         {row.votes?.last != null && ` · latest signed height ${row.votes.last.toLocaleString()}`}
         {row.delay == null ? ' · tip age unknown' : ` · tip delay ${row.delay}s`}
       </p>)}
-    </> : <p>To collect signed commits, install or update the host helper under Setup Guide → Monitoring.</p>}
+    </> : publicLookup ? (!sampleError && <p>Checking recent commits through your public RPC.</p>) : <p>To collect signed commits, install or update the host helper under Setup Guide → Monitoring.</p>}
   </section>
 }
