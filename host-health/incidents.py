@@ -12,6 +12,12 @@ from urllib.request import urlopen
 
 DB = os.path.join(os.getenv("STATE_DIRECTORY", "/var/lib/nodehomie-host-health"), "incidents.sqlite3")
 RULES = [
+    (r"\bStarting (?:Snapchain|Hypersnap) validator node with public key:", "Node mode", "Started in validator mode"),
+    (r"\bStarting (?:Snapchain|Hypersnap) read node with public key:", "Node mode", "Started in read-node mode"),
+    (r"\bRead node requesting vote set\b", "Consensus", "Read node requested a vote set"),
+    (r"\bRead node received vote set request\b", "Consensus", "Read node received a vote-set request"),
+    (r"\bRead node sending vote set response\b", "Consensus", "Read node logged a vote-set response"),
+    (r"\bReceived prior-round votes for re-proposal\b", "Consensus", "Received prior-round votes"),
     (r"\blocally signed (?:a )?vote\b", "Consensus", "Local vote signing reported"),
     (r"\blocally signed (?:a )?proposal\b", "Consensus", "Local proposal signing reported"),
     (r"merkle.*mismatch|trie root.*mismatch", "Validation", "Trie root mismatch"),

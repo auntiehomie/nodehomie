@@ -256,6 +256,7 @@ export default function App() {
   const [inputUrl, setInputUrl] = useState(() => localStorage.getItem(STORAGE_KEY) || '')
   const [data, setData] = useState(null)
   const [peers, setPeers] = useState(null)
+  const [mesh, setMesh] = useState(null)
   const [peerList, setPeerList] = useState([])
   const [peerError, setPeerError] = useState(null)
   const [error, setError] = useState(null)
@@ -289,6 +290,19 @@ export default function App() {
     hostRequestRef.current?.abort()
     const hostRequest = new AbortController()
     hostRequestRef.current = hostRequest
+    setMesh(previous => previous?.base === base ? previous : null)
+    fetch(`${base}/v1/mesh?format=json&validators_only=false`, { signal: hostRequest.signal, cache: 'no-store' })
+      .then(response => response.ok ? response.json() : null)
+      .then(view => {
+        if (hostRequestRef.current !== hostRequest) return
+        setMesh(view?.self?.peer_id && Array.isArray(view.peers) ? {
+          base, self: view.self,
+          peers: new Map(view.peers.map(peer => [peer.peer_id, peer])),
+        } : null)
+      })
+      .catch(() => {
+        if (hostRequestRef.current === hostRequest) setMesh(null)
+      })
     const hostTimeout = setTimeout(() => hostRequest.abort(), 8000)
     fetch(`${base}/node-healthz`, { signal: hostRequest.signal })
       .then(response => {
@@ -444,6 +458,7 @@ export default function App() {
   const peerDisplay = peers ?? infoPeerCount ?? (peerError ? 'Unavailable' : '—')
   const evidence = hostHealth?.validator_evidence
   const nodeId = data?.peerId ?? data?.peer_id
+  const matchingMesh = mesh?.base === url.replace(/\/$/, '') && mesh.self.peer_id === nodeId ? mesh : null
   const matchingEvidence = nodeId && evidence?.identity === nodeId ? evidence : null
   const evidenceStale = Date.now() / 1000 - (matchingEvidence?.checked_at ?? 0) > 150
   const version = data?.version ? `v${data.version}` : null
@@ -494,7 +509,7 @@ export default function App() {
           )}
 
           <CastIndexProgress progress={hostHealth?.cast_index} />
-          <ValidatorEvidence evidence={matchingEvidence} stale={evidenceStale} />
+          <ValidatorEvidence self={matchingMesh?.self} evidence={matchingEvidence} stale={evidenceStale} />
           <IncidentTimeline events={hostHealth?.incidents} />
 
           {data && (
@@ -581,7 +596,7 @@ export default function App() {
                     <ul className="peer-list">
                       {peerList.map((peer, index) => (
                         <li className="peer-row" key={`${peerId(peer)}-${index}`}>
-                          <PeerIdentity id={peerId(peer)} evidence={evidenceStale ? null : matchingEvidence} />
+                          <PeerIdentity id={peerId(peer)} meshPeer={matchingMesh?.peers.get(peerId(peer))} evidence={evidenceStale ? null : matchingEvidence} />
                           <span className="peer-meta">
                             {peer.source && <span className="peer-source">{peer.source}</span>}
                             {peerVersion(peer) && <span className="peer-version">v{peerVersion(peer)}</span>}
