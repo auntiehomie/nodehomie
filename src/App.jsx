@@ -1,4 +1,6 @@
 import { PeerIdentity, ValidatorEvidence } from './ValidatorEvidence'
+import { consensusId, parseRoster, rosterRows } from './validatorRoster.js'
+import names from './peerNames.json'
 import { monitoredPeer } from './monitoredPeer.js'
 import IncidentTimeline from './IncidentTimeline'
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -462,9 +464,31 @@ export default function App() {
   const matchingMesh = mesh?.base === url.replace(/\/$/, '') && mesh.self.peer_id === nodeId ? mesh : null
   const matchingEvidence = nodeId && evidence?.identity === nodeId ? evidence : null
   const evidenceStale = Date.now() / 1000 - (matchingEvidence?.checked_at ?? 0) > 150
+  const [schedule, setSchedule] = useState([])
+  useEffect(() => {
+    const controller = new AbortController()
+    async function refresh() {
+      try {
+        const response = await fetch('https://raw.githubusercontent.com/farcasterorg/hypersnap/main/validators.toml', { signal: controller.signal })
+        if (response.ok) setSchedule(parseRoster(await response.text()))
+      } catch { /* Mounted schedule and mesh observations remain available. */ }
+    }
+    refresh()
+    const timer = setInterval(refresh, 300000)
+    return () => { clearInterval(timer); controller.abort() }
+  }, [])
+  const roles = rosterRows(visibleShards, schedule, evidenceStale ? [] : matchingEvidence?.shards)
+  const expected = new Set(roles.flatMap(row => row.active ?? []))
+  expected.delete(nodeId)
+  expected.delete(consensusId(matchingMesh?.self.consensus_public_key))
+  const observed = new Set(peerList.flatMap(peer => {
+    const id = peerId(peer)
+    return [id, consensusId(matchingMesh?.peers.get(id)?.consensus_public_key)]
+  }))
+  const missing = [...expected].filter(id => !observed.has(id))
   const [publicSample, setPublicSample] = useState(null)
   const [sampleError, setSampleError] = useState(false)
-  const needsPublic = nodeId === monitoredPeer && (evidenceStale || !matchingEvidence?.shards?.some(s => s.votes?.checked > 0))
+  const needsPublic = nodeId === monitoredPeer && (evidenceStale || visibleShards.some(shard => !matchingEvidence?.shards?.some(row => row.id === shardId(shard) && row.votes?.checked > 0)))
   useEffect(() => {
     if (!needsPublic) return
     const controller = new AbortController()
@@ -481,7 +505,7 @@ export default function App() {
       .catch(() => { if (!controller.signal.aborted) setSampleError(true) })
     return () => controller.abort()
   }, [needsPublic, lastUpdated])
-  const voteSample = needsPublic && publicSample ? publicSample : matchingEvidence
+  const voteSample = needsPublic && publicSample && (!matchingEvidence || evidenceStale || publicSample.shards.some(row => row.votes?.checked > 0)) ? publicSample : matchingEvidence
   const version = data?.version ? `v${data.version}` : null
   const shardsSynced = shardSummary.every(s => s.status === 'synced')
   const upgradeStatus = protocolUpgradeStatus(data?.nextEngineVersionTimestamp ?? data?.next_engine_version_timestamp)
@@ -602,6 +626,11 @@ export default function App() {
                     {peers === null ? 'Unavailable' : `${peers} connected`}
                   </span>
                 </div>
+                {!peerError && expected.size > 0 && peers === peerList.length && <details>
+                  <summary>{expected.size - missing.length} of {expected.size} scheduled validator peers observed</summary>
+                  {missing.length ? <ul>{missing.map(id => <li key={id}>{names[id] ?? id} · absent from peer list</li>)}</ul>
+                    : <p>All scheduled validator peers appear in this sample.</p>}
+                </details>}
                 {peerError ? (
                   <p className="peer-empty">Could not load peer connections ({peerError}). The node is reachable, but its peer endpoint did not return usable data.</p>
                 ) : peerList.length > 0 ? (
@@ -617,7 +646,7 @@ export default function App() {
                     <ul className="peer-list">
                       {peerList.map((peer, index) => (
                         <li className="peer-row" key={`${peerId(peer)}-${index}`}>
-                          <PeerIdentity id={peerId(peer)} meshPeer={matchingMesh?.peers.get(peerId(peer))} evidence={evidenceStale ? null : matchingEvidence} />
+                          <PeerIdentity id={peerId(peer)} meshPeer={matchingMesh?.peers.get(peerId(peer))} evidence={{ shards: roles }} />
                           <span className="peer-meta">
                             {peer.source && <span className="peer-source">{peer.source}</span>}
                             {peerVersion(peer) && <span className="peer-version">v{peerVersion(peer)}</span>}

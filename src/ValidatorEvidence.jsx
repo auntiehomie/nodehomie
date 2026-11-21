@@ -17,6 +17,7 @@ export function ValidatorEvidence({ self, evidence, stale, publicLookup, sampleE
     {typeof self?.is_validator === 'boolean' &&
       <p>Node role · {self.is_validator ? 'Validator' : 'Non-validator'}</p>}
     <strong>{votingStatus(evidence?.shards, stale)}</strong>
+    {publicLookup && <p><a href="/api/validator-votes" target="_blank" rel="noreferrer">View public voting evidence</a></p>}
     {sampleError && <p>Public RPC unavailable. Refresh to retry.</p>}
     {evidence?.shards?.length ? <>
       <p>{stale ? 'Stale sample' : evidence.source || 'Host helper'} · {new Date(evidence.checked_at * 1000).toLocaleString()}</p>
