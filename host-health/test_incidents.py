@@ -20,6 +20,29 @@ class IncidentTests(unittest.TestCase):
         self.assertEqual(classify("INFO Received prior-round votes for re-proposal"),
                          ("Consensus", "Received prior-round votes"))
 
+    def test_error_shows_redacted_message(self):
+        line = ("2026-11-23T17:20:24.934931Z ERROR snapchain::mempool::mempool: "
+                "Unable to send message from mempool")
+        self.assertEqual(classify(line), ("Error", "mempool: Unable to send message from mempool"))
+
+    def test_error_message_drops_ids_and_payloads(self):
+        line = ('ERROR node{name=0x0149 Block}:consensus{height=[0] 51096272 round=0}: '
+                'informalsystems_malachitebft_engine::consensus: Error when processing ReceivedProposedValue '
+                'message: Decided value not found after commit timeout height=[0] 51096272 token=secret')
+        kind, label = classify(line)
+        self.assertEqual(kind, "Consensus")
+        self.assertEqual(label, "Consensus timeout · consensus: Error when processing ReceivedProposedValue "
+                                "message: Decided value not found after commit timeout round=0")
+        self.assertNotIn("secret", label)
+
+    def test_warning_redacts_peers_and_addresses(self):
+        line = ('WARN snapchain::network::gossip: Failed to dial peer 12D3KooWABCDEF '
+                'at 85.209.231.221:3382 via 0123456789abcdef0123')
+        self.assertEqual(classify(line), ("Warning", "gossip: Failed to dial peer <peer> at <ip> via <hash>"))
+
+    def test_unparseable_error_keeps_generic_label(self):
+        self.assertEqual(classify("ERROR something broke"), ("Error", "Container logged an error"))
+
     def test_local_vote(self):
         self.assertEqual(classify("locally signed vote round=4"),
                          ("Consensus", "Local vote signing reported round=4"))
