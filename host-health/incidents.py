@@ -25,8 +25,8 @@ RULES = [
     (r"\b(disconnected|connection closed)\b", "Peer", "Peer connection closed"),
     (r"\b(connection established|peer connected)\b", "Peer", "Peer connection established"),
     (r"\bconsensus\b.*\btimeout|timed out.*\bconsensus\b", "Consensus", "Consensus timeout"),
-    (r"\bERROR\b", "Error", "Container logged an error"),
-    (r"\bWARN\b", "Warning", "Container logged a warning"),
+    (r"(?-i:\bERROR\b)", "Error", "Container logged an error"),
+    (r"(?-i:\bWARN\b)", "Warning", "Container logged a warning"),
 ]
 
 
