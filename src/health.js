@@ -67,11 +67,33 @@ export function calculateStorageRunway(samples, freeBytes) {
   const latest = valid.at(-1)
   if (!latest) return null
 
-  const first = valid[0]
+  // The node's size is a RocksDB estimate. It jumps when a shard is restored from a
+  // snapshot, rebuilt, or briefly missing during a restart, and those steps are not
+  // growth. Only trust the samples since the last step of more than 20%.
+  let start = 0
+  for (let i = 1; i < valid.length; i++) {
+    const before = valid[i - 1].size
+    if (before > 0 && Math.abs(valid[i].size - before) / before > 0.2) start = i
+  }
+  const recent = valid.slice(start)
+  const first = recent[0]
   const elapsedMs = latest.sampledAt - first.sampledAt
-  const growth = latest.size - first.size
-  const enoughHistory = elapsedMs >= 15 * 60 * 1000
-  const growthPerDay = enoughHistory && growth > 0 ? growth / (elapsedMs / (24 * 60 * 60 * 1000)) : null
+  const enoughHistory = recent.length >= 2 && elapsedMs >= 60 * 60 * 1000
+
+  // Least-squares slope, so one odd reading cannot dominate the estimate.
+  let slopePerMs = null
+  if (enoughHistory) {
+    const meanT = recent.reduce((sum, s) => sum + s.sampledAt, 0) / recent.length
+    const meanS = recent.reduce((sum, s) => sum + s.size, 0) / recent.length
+    let num = 0
+    let den = 0
+    for (const s of recent) {
+      num += (s.sampledAt - meanT) * (s.size - meanS)
+      den += (s.sampledAt - meanT) ** 2
+    }
+    slopePerMs = den > 0 ? num / den : null
+  }
+  const growthPerDay = slopePerMs !== null && slopePerMs > 0 ? slopePerMs * 24 * 60 * 60 * 1000 : null
   const usableFreeBytes = Number.isFinite(freeBytes) && freeBytes >= 0 ? freeBytes : null
   const daysRemaining = growthPerDay && usableFreeBytes !== null ? usableFreeBytes / growthPerDay : null
 

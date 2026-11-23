@@ -96,12 +96,41 @@ test('storage samples are bounded and ignore rapid duplicate samples', () => {
 test('storage runway requires enough positive growth history', () => {
   const day = 24 * 60 * 60 * 1000
   const runway = calculateStorageRunway([
-    { size: 100, sampledAt: 0 },
-    { size: 200, sampledAt: day },
+    { size: 1000, sampledAt: 0 },
+    { size: 1050, sampledAt: day / 2 },
+    { size: 1100, sampledAt: day },
   ], 300)
   assert.equal(runway.growthPerDay, 100)
   assert.equal(runway.daysRemaining, 3)
   assert.equal(calculateStorageRunway([{ size: 200, sampledAt: day }], 300).growthPerDay, null)
+})
+
+test('a shard restore step is not counted as growth', () => {
+  const hour = 60 * 60 * 1000
+  const gib = 2 ** 30
+  const samples = [
+    { size: 760 * gib, sampledAt: 0 },
+    { size: 380 * gib, sampledAt: 1 * hour },
+    { size: 380 * gib, sampledAt: 10 * hour },
+    { size: 760 * gib, sampledAt: 20 * hour },
+    { size: 760.5 * gib, sampledAt: 21 * hour },
+    { size: 761 * gib, sampledAt: 22 * hour },
+  ]
+  const runway = calculateStorageRunway(samples, 484 * gib)
+  assert.ok(Math.abs(runway.growthPerDay - 12 * gib) < 0.01 * gib)
+  assert.ok(runway.daysRemaining > 30)
+})
+
+test('one low reading does not inflate the estimate', () => {
+  const hour = 60 * 60 * 1000
+  const runway = calculateStorageRunway([
+    { size: 1000, sampledAt: 0 },
+    { size: 1000, sampledAt: hour },
+    { size: 900, sampledAt: 2 * hour },
+    { size: 1001, sampledAt: 3 * hour },
+    { size: 1001, sampledAt: 4 * hour },
+  ], 1000)
+  assert.ok(runway.growthPerDay === null || runway.growthPerDay < 100)
 })
 
 test('protocol upgrade timestamps produce useful urgency states', () => {
