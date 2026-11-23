@@ -30,10 +30,39 @@ RULES = [
 ]
 
 
+MODULE_MESSAGE = re.compile(r"\b([a-z_][a-z0-9_]*(?:::[a-z0-9_]+)+): (.+)$")
+REDACTIONS = [
+    (re.compile(r"[\[({\"'].*$"), ""),                             # structured payloads
+    (re.compile(r"\S+=\S*"), ""),                                  # key=value payloads
+    (re.compile(r"\b12D3KooW\w+"), "<peer>"),
+    (re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b"), "<ip>"),
+    (re.compile(r"\b(?:0x)?[0-9a-fA-F]{16,}\b"), "<hash>"),
+    (re.compile(r"\b\d{4,}\b"), "N"),
+]
+
+
+def summarize(clean):
+    """Short, redacted text for an ERROR/WARN line: module plus message words only."""
+    match = MODULE_MESSAGE.search(clean)
+    if not match:
+        return None
+    module, text = match[1].split("::")[-1], match[2]
+    for pattern, replacement in REDACTIONS:
+        text = pattern.sub(replacement, text)
+    text = re.sub(r"\s+", " ", text).strip(" :,;-")
+    return f"{module}: {text[:140]}" if text else None
+
+
 def classify(line):
     clean = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", line)
     for pattern, category, label in RULES:
         if re.search(pattern, clean, re.I):
+            if category in ("Error", "Warning"):
+                label = summarize(clean) or label
+            elif category == "Consensus" and re.search(r"\b(ERROR|WARN)\b", clean):
+                detail = summarize(clean)
+                if detail:
+                    label = f"{label} · {detail}"
             for field in ("shard_id", "height", "round"):
                 match = re.search(rf"\b{field}=(\d{{1,18}})\b", clean)
                 if match:
@@ -57,6 +86,7 @@ def sample(db, container, previous, now, state):
         lines = result.stdout.splitlines()
         if len(lines) == 1001:
             record(db, now, "Recorder", "Log window reached its line limit")
+        seen = {}
         for line in lines:
             stamp, _, body = line.partition(" ")
             event = classify(body)
@@ -66,7 +96,11 @@ def sample(db, container, previous, now, state):
                 except ValueError:
                     continue
                 if start <= when < now:
-                    record(db, when, *event)
+                    # Group repeats within one sample window so floods stay readable.
+                    first, count = seen.get(event, (when, 0))
+                    seen[event] = (first, count + 1)
+        for (kind, message), (when, count) in seen.items():
+            record(db, when, kind, f"{message} (x{count})" if count > 1 else message)
         logs = "Container log collection available"
     except (OSError, subprocess.SubprocessError):
         logs = "Container logs unavailable"
