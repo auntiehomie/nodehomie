@@ -328,6 +328,54 @@ sudo ln -s /mnt/ssd/.rocks/shard-1 /mnt/ssd2/.rocks/shard-1
 ./snapchain.sh up`}</CodeBlock>
         </Section>
 
+        <Section title="12b. Validator troubleshooting (quick fixes)">
+          <p className="gp">Lessons from real outages. Replace <code>hypersnap-hypersnap-1</code> if your container is named differently, and use the same <code>-f</code> compose files you normally start the node with.</p>
+
+          <p className="glabel">Quick health check (heights and seconds behind per shard):</p>
+          <CodeBlock>{`curl -s http://localhost:3381/v1/info | jq '.version, (.shardInfos[] | {shardId, maxHeight, blockDelay})'`}</CodeBlock>
+
+          <p className="glabel">Show only errors, grouped with counts:</p>
+          <CodeBlock>{`docker logs --tail 150000 hypersnap-hypersnap-1 2>&1 | sed 's/\\x1b\\[[0-9;]*m//g' | grep -E ' ERROR |panicked at' | sed -E 's/^[^ ]+ +//; s/[0-9]{3,}/N/g' | cut -c1-200 | sort | uniq -c | sort -rn | head -20`}</CodeBlock>
+          <p className="gp"><code>docker logs --since</code> is very slow on a large log; <code>--tail</code> is fast.</p>
+
+          <p className="glabel">Node restarts every few minutes:</p>
+          <CodeBlock>{`docker inspect -f 'restarts={{.RestartCount}} started={{.State.StartedAt}}' hypersnap-hypersnap-1
+docker logs --tail 50000 hypersnap-hypersnap-1 2>&1 | grep -c 'Too many open files'`}</CodeBlock>
+          <p className="gp">If "Too many open files" shows up (common right after a snapshot restore, which creates tens of thousands of files), raise the limit under the hypersnap service in <code>docker-compose.yml</code>, then recreate the container:</p>
+          <CodeBlock>{`    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576`}</CodeBlock>
+          <p className="gp">Panics like <code>host.rs:430</code> or <code>mempool.rs:1370</code> ("decision tx is closed") right after a shutdown are side effects of the shutdown, not the cause. Look for the line just before "Received shutdown signal".</p>
+
+          <p className="glabel">Shards 1 and 2 never move after a restart:</p>
+          <p className="gp">If the node started while shard 0 was far behind, shards 1/2 can sit in <code>phase=Unstarted</code> with "Timed out waiting for confirmation. Sync ended early" repeating. Let shard 0 catch up first, then restart once.</p>
+          <CodeBlock>{`docker logs --tail 3000 hypersnap-hypersnap-1 2>&1 | grep -o 'phase=[A-Za-z]*' | sort | uniq -c
+docker restart hypersnap-hypersnap-1`}</CodeBlock>
+
+          <p className="glabel">"post-fork block events must be consecutive" (shard won't accept blocks):</p>
+          <p className="gp">Don't hand-inject events. Stop the node, delete only that shard's folder, and start it again. It restores the shard from the snapshot. The shard folder must be a normal directory inside <code>.rocks</code>, not a separate bind mount, or the restore can't install it.</p>
+          <CodeBlock>{`docker stop hypersnap-hypersnap-1
+sudo rm -rf ~/hypersnap/.rocks/shard-1
+docker start hypersnap-hypersnap-1
+du -sh ~/hypersnap/.rocks/.snapshot-restore-shard-1   # restore progress`}</CodeBlock>
+
+          <p className="glabel">Watchdog during restores and catch-up:</p>
+          <p className="gp">A stall watchdog will restart a node whose shards 1/2 are waiting on shard 0, which throws away catch-up progress. Pause it until all shards are current.</p>
+          <CodeBlock>{`sudo systemctl stop hypersnap-watchdog
+sudo systemctl start hypersnap-watchdog   # once all shards are within 60s`}</CodeBlock>
+
+          <p className="glabel">Validators "absent from peer list" or connecting then closing:</p>
+          <p className="gp">Some validators drop peers that are far behind on shards 1/2; that clears once you're synced. If the closes continue when you're synced, it's on their side. Ask them for their log line. After changing NAT or tunnel rules, clear stale connection tracking on both ends:</p>
+          <CodeBlock>{`sudo conntrack -D -p udp --orig-port-src 3382; sudo conntrack -D -p udp --orig-port-dst 3382`}</CodeBlock>
+          <p className="gp">"Could not load peer connections (HTTP 400)" means the node's peer query timed out while it was busy. It's not a disconnect.</p>
+
+          <p className="glabel">High CPU:</p>
+          <p className="gp">The bundled statsd/graphite container can use almost as much CPU as the node. If you use NodeHomie instead of Grafana, stop it:</p>
+          <CodeBlock>{`docker update --restart=no hypersnap-statsd-1 hypersnap-grafana-1
+docker stop hypersnap-statsd-1 hypersnap-grafana-1`}</CodeBlock>
+        </Section>
+
         <Section title="13. Maintenance">
           <p className="glabel">Upgrade the node:</p>
           <CodeBlock>{`cd ~/snapchain && ./snapchain.sh upgrade
