@@ -273,6 +273,8 @@ export default function App() {
   const [storageOutlook, setStorageOutlook] = useState(null)
   const [peerActivity, setPeerActivity] = useState(null)
   const timerRef = useRef(null)
+  const peerFailuresRef = useRef(0)
+  const [peerStale, setPeerStale] = useState(false)
   const prevShardRef = useRef({})
   const prevMessageRef = useRef(null)
   const trendsRef = useRef({})
@@ -378,11 +380,21 @@ export default function App() {
         setPeerActivity(peerIdsRef.current === null ? { ...activity, gained: [], lost: [] } : activity)
         peerIdsRef.current = activity.ids
         setPeerError(null)
+        setPeerStale(false)
+        peerFailuresRef.current = 0
       } catch (peerFetchError) {
-        setPeers(null)
-        setPeerList([])
-        setPeerActivity(null)
-        setPeerError(peerFetchError?.message || 'Peer endpoint unavailable')
+        // The node answers 400 when its internal peer query times out while it is busy
+        // (e.g. catching up). Keep the last good list for a couple of refreshes.
+        peerFailuresRef.current += 1
+        if (peerIdsRef.current !== null && peerFailuresRef.current < 3) {
+          setPeerStale(true)
+        } else {
+          setPeers(null)
+          setPeerList([])
+          setPeerActivity(null)
+          setPeerStale(false)
+          setPeerError(peerFetchError?.message || 'Peer endpoint unavailable')
+        }
       }
     } catch (e) {
       setError(e.message)
@@ -439,6 +451,8 @@ export default function App() {
     setPeers(null)
     setPeerList([])
     setPeerError(null)
+    setPeerStale(false)
+    peerFailuresRef.current = 0
     setSpeeds({})
     setTrends({})
     trendsRef.current = {}
@@ -623,7 +637,7 @@ export default function App() {
                 <div className="peers-panel-header">
                   <h2 id="connected-peers-title">Connected peers</h2>
                   <span className={peerError ? 'peer-count peer-count-error' : 'peer-count'}>
-                    {peers === null ? 'Unavailable' : `${peers} connected`}
+                    {peers === null ? 'Unavailable' : `${peers} connected${peerStale ? ' (last refresh failed)' : ''}`}
                   </span>
                 </div>
                 {!peerError && expected.size > 0 && peers === peerList.length && <details>

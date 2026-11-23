@@ -40,6 +40,11 @@ class IncidentTests(unittest.TestCase):
                 'at 85.209.231.221:3382 via 0123456789abcdef0123')
         self.assertEqual(classify(line), ("Warning", "gossip: Failed to dial peer <peer> at <ip> via <hash>"))
 
+    def test_warning_with_error_field_is_a_warning(self):
+        line = ("WARN Actor{id=\"0.7\"}: snapchain::storage::store::engine: hyper merge failed shard_id=2 "
+                "error=bad_request.invalid_param/sequence cannot fit in event id. Seq> 14 bits")
+        self.assertEqual(classify(line), ("Warning", "engine: hyper merge failed cannot fit in event id. Seq> 14 bits shard_id=2"))
+
     def test_unparseable_error_keeps_generic_label(self):
         self.assertEqual(classify("ERROR something broke"), ("Error", "Container logged an error"))
 
