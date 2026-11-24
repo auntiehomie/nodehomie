@@ -12,7 +12,7 @@
   "dependencies": {
     "@grpc/grpc-js": "^1.14.7",
     "@grpc/proto-loader": "^0.8.1",
-    "react": "^18.2.0",
+    "react": "^19.3.1",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.16.0",
     "smol-toml": "^1.9.1"
