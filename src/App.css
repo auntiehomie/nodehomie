@@ -532,3 +532,34 @@
 @media (max-width: 390px) {
   .engine-grid { grid-template-columns: 1fr; }
 }
+
+.mesh-addresses .peer-meta { flex-wrap: wrap; }
+
+.mesh-login, .mesh-lookup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.mesh-login p { flex-basis: 100%; margin: 0; line-height: 1.5; }
+
+.mesh-login input, .mesh-lookup input {
+  flex: 1 1 140px;
+  min-width: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.mesh-lookup-result {
+  font-size: 12px;
+  color: var(--text);
+  margin: 0 0 10px;
+}

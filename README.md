@@ -10,6 +10,7 @@ A mobile-friendly Snapchain node monitor. Enter your node URL (e.g. your Tailsca
 - Database growth history and estimated disk-space runway
 - Scheduled protocol-upgrade countdown from the node's engine timestamp
 - Peer churn, connection source, and reported peer versions
+- Mesh addresses: the address each peer and validator advertises (from a mesh crawl), named, with a "Who is this IP?" lookup
 - Collapsible shard 0 network-engine status with read-node-aware mempool reporting
 - Color coded sync status (green/amber/red)
 - Auto-refresh (15s, 30s, 1m, 5m)

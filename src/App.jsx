@@ -3,6 +3,8 @@ import { consensusId, parseRoster, rosterRows } from './validatorRoster.js'
 import names from './peerNames.json'
 import { monitoredPeer } from './monitoredPeer.js'
 import IncidentTimeline from './IncidentTimeline'
+import { MeshAddresses } from './MeshAddresses'
+import { buildAddressBook } from './meshAddresses.js'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   EXPECTED_SHARDS,
@@ -24,6 +26,16 @@ import './App.css'
 
 const STORAGE_KEY = 'nodehomie_url'
 const STORAGE_HISTORY_PREFIX = 'nodehomie_storage_history:'
+const MESH_AUTH_KEY = 'nodehomie_mesh_auth'
+const CRAWL_INTERVAL_MS = 5 * 60 * 1000
+
+function readMeshAuth() {
+  try { return sessionStorage.getItem(MESH_AUTH_KEY) || '' } catch { return '' }
+}
+
+function meshHeaders(token) {
+  return token ? { Authorization: 'Basic ' + token } : {}
+}
 
 function formatSpeed(bps) {
   if (bps === undefined || bps === null) return '—'
@@ -121,9 +133,10 @@ function peerId(peer) {
   return peer.peer_id ?? peer.peerId ?? peer.id ?? 'Unknown peer'
 }
 
-function peerAddress(peer) {
-  return peer.observed_address ?? peer.observedAddress ?? peer.contact_info?.gossip_address ??
-    peer.contactInfo?.gossipAddress ?? ''
+function peerAddress(peer, entry) {
+  if (entry?.advertised) return entry.advertised.text
+  return peer.contact_info?.gossip_address ?? peer.contactInfo?.gossipAddress ??
+    peer.observed_address ?? peer.observedAddress ?? ''
 }
 
 function peerVersion(peer) {
@@ -260,6 +273,11 @@ export default function App() {
   const [data, setData] = useState(null)
   const [peers, setPeers] = useState(null)
   const [mesh, setMesh] = useState(null)
+  const [meshStatus, setMeshStatus] = useState('loading')
+  const [meshAuth, setMeshAuth] = useState(readMeshAuth)
+  const meshAuthRef = useRef(meshAuth)
+  const [topology, setTopology] = useState(null)
+  const [crawling, setCrawling] = useState(false)
   const [peerList, setPeerList] = useState([])
   const [peerError, setPeerError] = useState(null)
   const [error, setError] = useState(null)
@@ -296,17 +314,28 @@ export default function App() {
     const hostRequest = new AbortController()
     hostRequestRef.current = hostRequest
     setMesh(previous => previous?.base === base ? previous : null)
-    fetch(`${base}/v1/mesh?format=json&validators_only=false`, { signal: hostRequest.signal, cache: 'no-store' })
-      .then(response => response.ok ? response.json() : null)
+    fetch(`${base}/v1/mesh?format=json&validators_only=false`, { signal: hostRequest.signal, cache: 'no-store', credentials: 'omit', headers: meshHeaders(meshAuthRef.current) })
+      .then(response => {
+        if (response.status === 401) {
+          const unauthorized = new Error('unauthorized')
+          unauthorized.unauthorized = true
+          throw unauthorized
+        }
+        return response.ok ? response.json() : null
+      })
       .then(view => {
         if (hostRequestRef.current !== hostRequest) return
-        setMesh(view?.self?.peer_id && Array.isArray(view.peers) ? {
+        const ok = view?.self?.peer_id && Array.isArray(view.peers)
+        setMesh(ok ? {
           base, self: view.self,
           peers: new Map(view.peers.map(peer => [peer.peer_id, peer])),
         } : null)
+        setMeshStatus(ok ? 'ok' : 'unavailable')
       })
-      .catch(() => {
-        if (hostRequestRef.current === hostRequest) setMesh(null)
+      .catch(meshError => {
+        if (hostRequestRef.current !== hostRequest) return
+        setMesh(null)
+        if (meshError?.name !== 'AbortError') setMeshStatus(meshError?.unauthorized ? 'unauthorized' : 'unavailable')
       })
     const hostTimeout = setTimeout(() => hostRequest.abort(), 8000)
     fetch(`${base}/node-healthz`, { signal: hostRequest.signal })
@@ -436,6 +465,40 @@ export default function App() {
     setStorageOutlook(calculateStorageRunway(samples, databaseDisk?.free_bytes))
   }, [data, hostHealth, url])
 
+  const crawlMesh = useCallback(async () => {
+    if (!url) return
+    const base = url.replace(/\/$/, '')
+    setCrawling(true)
+    try {
+      const response = await fetch(`${base}/v1/mesh?format=json&crawl=true&validators_only=false`, { cache: 'no-store', credentials: 'omit', headers: meshHeaders(meshAuthRef.current) })
+      if (response.status === 401) setMeshStatus('unauthorized')
+      if (!response.ok) return
+      const topo = await response.json()
+      if (Array.isArray(topo?.nodes)) setTopology({ base, data: topo, at: new Date() })
+    } catch { /* The local mesh view still provides contact-info addresses. */ } finally {
+      setCrawling(false)
+    }
+  }, [url])
+
+  useEffect(() => {
+    if (!url) return
+    crawlMesh()
+    const timer = setInterval(crawlMesh, CRAWL_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [url, meshAuth, crawlMesh])
+
+  function saveMeshCredentials(user, pass) {
+    const token = user || pass ? btoa(`${user}:${pass}`) : ''
+    try {
+      if (token) sessionStorage.setItem(MESH_AUTH_KEY, token)
+      else sessionStorage.removeItem(MESH_AUTH_KEY)
+    } catch { /* Credentials then last until the page reloads. */ }
+    meshAuthRef.current = token
+    setMeshAuth(token)
+    setMeshStatus('loading')
+    fetchData(url)
+  }
+
   function connect() {
     const trimmed = inputUrl.trim()
     if (!trimmed) return
@@ -460,6 +523,9 @@ export default function App() {
     setMessageActivity(null)
     setStorageOutlook(null)
     setPeerActivity(null)
+    setTopology(null)
+    setMesh(null)
+    setMeshStatus('loading')
     prevShardRef.current = {}
     prevMessageRef.current = null
     peerIdsRef.current = null
@@ -491,6 +557,8 @@ export default function App() {
     const timer = setInterval(refresh, 300000)
     return () => { clearInterval(timer); controller.abort() }
   }, [])
+  const matchingTopology = topology?.base === url.replace(/\/$/, '') ? topology : null
+  const addressBook = buildAddressBook({ mesh: matchingMesh, topology: matchingTopology?.data, knownNames: names, localPeerId: nodeId })
   const roles = rosterRows(visibleShards, schedule, evidenceStale ? [] : matchingEvidence?.shards)
   const expected = new Set(roles.flatMap(row => row.active ?? []))
   expected.delete(nodeId)
@@ -664,7 +732,7 @@ export default function App() {
                           <span className="peer-meta">
                             {peer.source && <span className="peer-source">{peer.source}</span>}
                             {peerVersion(peer) && <span className="peer-version">v{peerVersion(peer)}</span>}
-                            {peerAddress(peer) && <span className="peer-address" title={peerAddress(peer)}>{peerAddress(peer)}</span>}
+                            {peerAddress(peer, addressBook.get(peerId(peer))) && <span className="peer-address" title={addressBook.get(peerId(peer))?.advertised ? 'Advertised address' : peerAddress(peer)}>{peerAddress(peer, addressBook.get(peerId(peer)))}</span>}
                           </span>
                         </li>
                       ))}
@@ -676,6 +744,8 @@ export default function App() {
                   <p className="peer-empty">No connected peers are currently reported by the node.</p>
                 )}
               </section>
+
+              <MeshAddresses book={addressBook} status={meshStatus} crawledAt={matchingTopology?.at} onCrawl={crawlMesh} crawling={crawling} hasCredentials={Boolean(meshAuth)} onSaveCredentials={saveMeshCredentials} />
 
               <EngineShard shard={engineShard} speed={speeds[0]} trend={trends[0]} />
 
