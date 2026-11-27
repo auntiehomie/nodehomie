@@ -264,7 +264,11 @@ sudo tailscale up`}</CodeBlock>
           <p className="glabel">Watch disk usage:</p>
           <CodeBlock>{`watch -n 30 'df -h /mnt/ssd /mnt/ssd2 && du -sh /mnt/ssd2/.rocks/shard-*/'`}</CodeBlock>
           <p className="glabel">Optional: show container and disk health in NodeHomie</p>
-          <p className="gp">This read-only helper runs on the node machine, binds only to localhost, and reads Docker and disk usage. Replace <code>homie</code>, the two data paths, and the Vercel origin with your own values. It does not expose the Docker socket to the web app.</p>
+          <p className="gp">This read-only helper runs on the node machine, binds only to localhost, and reads Docker and disk usage. It also powers the incident timeline, Cast index backfill card, and validator voting samples. It does not expose the Docker socket to the web app.</p>
+          <p className="gp">Find the values you'll need first: your container name, and the live database and snapshot staging paths you set up in step 8.</p>
+          <CodeBlock>{`docker ps --format '{{.Names}}'
+grep -A3 "volumes:" ~/snapchain/docker-compose.yml`}</CodeBlock>
+          <p className="gp">Install the helper. Replace the container name, the two paths, and the Vercel origin in <code>/etc/default/nodehomie-host-health</code> with your own values:</p>
           <CodeBlock>{`git clone https://github.com/auntiehomie/nodehomie.git ~/nodehomie
 sudo install -d -m 755 /opt/nodehomie-host-health
 docker pull fullstorydev/grpcurl:v1.9.3
@@ -276,21 +280,43 @@ NODEHOMIE_DB_PATH=/home/homie/hypersnap/.rocks
 NODEHOMIE_STAGING_PATH=/mnt/hypersnap-staging
 NODEHOMIE_ALLOWED_ORIGIN=https://your-nodehomie.vercel.app
 EOF
+sudo mkdir -p /etc/systemd/system/nodehomie-host-health.service.d
+printf '[Service]\\nUser=%s\\nGroup=docker\\n' "$USER" | sudo tee /etc/systemd/system/nodehomie-host-health.service.d/user.conf >/dev/null
 sudo systemctl daemon-reload
 sudo systemctl enable --now nodehomie-host-health
 curl -s http://127.0.0.1:3390/ | jq .`}</CodeBlock>
-          <p className="gp">Set <code>User=homie</code> and <code>Group=docker</code> under <code>[Service]</code> in the unit file before enabling it (replace <code>homie</code> with your Ubuntu username). Add the monitor to the node's existing Tailscale Serve configuration:</p>
+          <p className="gp">The <code>user.conf</code> drop-in runs the helper as your Ubuntu user in the <code>docker</code> group, so it can read container logs. Keeping it in a drop-in (instead of editing the unit file) means it survives future helper updates.</p>
+          <p className="glabel">Helper settings (<code>/etc/default/nodehomie-host-health</code>):</p>
+          <div className="gtable-wrap">
+            <table className="gtable">
+              <thead><tr><th>Variable</th><th>Default</th><th>What it's for</th></tr></thead>
+              <tbody>
+                <tr><td><code>NODEHOMIE_CONTAINER</code></td><td><code>hypersnap-hypersnap-1</code></td><td>Node container to read state and logs from</td></tr>
+                <tr><td><code>NODEHOMIE_DB_PATH</code></td><td><code>/home/homie/hypersnap/.rocks</code></td><td>Live database, for disk use and growth</td></tr>
+                <tr><td><code>NODEHOMIE_STAGING_PATH</code></td><td><code>/mnt/hypersnap-staging</code></td><td>Snapshot staging drive</td></tr>
+                <tr><td><code>NODEHOMIE_ALLOWED_ORIGIN</code></td><td>(none)</td><td>Your NodeHomie URL, allowed to read the helper</td></tr>
+                <tr><td><code>NODEHOMIE_HEALTH_PORT</code></td><td><code>3390</code></td><td>Localhost port the helper listens on</td></tr>
+                <tr><td><code>NODEHOMIE_VALIDATOR_PUBLIC_KEY</code></td><td>(from node info)</td><td>Optional: 64-character hex key of a separate voting identity</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="gp">If you change <code>NODEHOMIE_HEALTH_PORT</code>, use the same port in the Tailscale Serve command below. Add the monitor to the node's existing Tailscale Serve configuration:</p>
           <CodeBlock>{`sudo tailscale serve --bg --set-path=/node-healthz http://127.0.0.1:3390`}</CodeBlock>
           <p className="gp">After deploying the updated NodeHomie, enter your existing Tailscale HTTPS node address. The monitor will show container state, CPU, memory, and free disk when the helper is reachable. Never enable Tailscale Funnel for this endpoint.</p>
-          <p className="gp">Voting samples use local gRPC on port 3383. The helper reads the Ed25519 identity from local node info. For a separate voting identity, set NODEHOMIE_VALIDATOR_PUBLIC_KEY in /etc/default/nodehomie-host-health to the 64-character hex public key. Validator roles use the mounted /app/validators.toml and require Python 3.11+ or python3-tomli.</p>
-          <p className="gp">The Cast index backfill card uses the same host monitor to show the latest indexed cast count and completion status per shard and source. If you already installed the helper, update your checkout, then reinstall the helper:</p>
+          <p className="gp">Voting samples use local gRPC on port 3383 through the <code>fullstorydev/grpcurl</code> image pulled above. The helper reads the Ed25519 identity from local node info; set <code>NODEHOMIE_VALIDATOR_PUBLIC_KEY</code> only if you vote with a separate identity. Validator roles use the mounted <code>/app/validators.toml</code> and require Python 3.11+ (Ubuntu 24.04 ships 3.12) or <code>python3-tomli</code>.</p>
+          <p className="glabel">Updating the helper:</p>
+          <p className="gp">New NodeHomie features often need a newer helper (the incident timeline, Cast index backfill, validator roles and voting samples, and node-mode log events all did). An older helper shows those cards as unavailable. After pulling an update, reinstall the helper files and the unit, then restart:</p>
           <CodeBlock>{`git -C ~/nodehomie pull --ff-only
 docker pull fullstorydev/grpcurl:v1.9.3
 sudo install -m 644 ~/nodehomie/host-health/{server.py,incidents.py,validators.py,certificates.proto} /opt/nodehomie-host-health/
-sudo mkdir -p /etc/systemd/system/nodehomie-host-health.service.d
-printf '[Service]\\nStateDirectory=nodehomie-host-health\\nStateDirectoryMode=0700\\n' | sudo tee /etc/systemd/system/nodehomie-host-health.service.d/recorder.conf >/dev/null
+sudo install -m 644 ~/nodehomie/host-health/nodehomie-host-health.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl restart nodehomie-host-health`}</CodeBlock>
+          <p className="gp">If you set <code>User=</code> and <code>Group=</code> by editing the unit file in an older install, move them into the <code>user.conf</code> drop-in above first, because reinstalling the unit replaces your edits. The unit now includes the <code>StateDirectory</code> the incident recorder needs, so the old <code>recorder.conf</code> drop-in is no longer required (it's harmless to keep).</p>
+          <p className="glabel">Mesh addresses panel:</p>
+          <p className="gp">This panel crawls <code>/v1/mesh</code> on your node (on connect, every 5 minutes, and from the "Crawl mesh" button) to show the address each peer and validator advertises. It goes through the same Tailscale HTTPS address as the rest of the dashboard, so it needs no extra setup. If your node has admin auth turned on, the panel asks for the admin username and password; they're kept only in that browser tab and sent the same way the built-in mesh UI sends them.</p>
+          <p className="glabel">Public voting sample:</p>
+          <p className="gp">The voting card can also show a sample of signed commits from infinitehomie's public gRPC endpoint. This runs as a Vercel function (<code>/api/validator-votes</code>) in the NodeHomie deployment, so it needs nothing on your node.</p>
           <p className="gp">Grafana dashboard is available at <code>http://your-tailscale-ip:3000</code></p>
           <p className="glabel">Key metrics:</p>
           <ul className="glist">
